@@ -55,6 +55,16 @@ source .venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
+## Transcript Command
+
+Phase 3 adds a manual transcript text area that sends typed English text to the local backend parser. Parsed output appears as an editable structured draft preview.
+
+- Drafts are never saved automatically.
+- `Save Application` uses the existing `POST /applications` endpoint.
+- Correction transcripts patch only the active draft.
+- `Use current link` fills `JOB LINK` only when the transcript explicitly asks for the latest captured URL and a captured URL exists.
+- `Current Stage`, `NEXT ACTION`, `COMMENTS`, and `ENGAGED (# OF DAYS)` are only populated when explicitly dictated.
+
 ## Manual Validation
 
 ```text
@@ -68,8 +78,13 @@ uvicorn app.main:app --reload
 [ ] Search works
 [ ] Filters work
 [ ] Cancel modal works
+[ ] Transcript parses into an editable draft
+[ ] Save Application creates a tracker row only after explicit click
+[ ] Correction transcript updates the draft without saving
+[ ] Use current link in a transcript fills JOB LINK only when a captured URL exists
+[ ] Current Stage remains independent from STATUS, COMMENTS, and NEXT ACTION
 ```
 
 ## Scope
 
-This frontend contains the Phase 1 tracker table, add/edit form, delete confirmation, search, filters, and the Phase 2 captured URL integration. It does not include AI, voice, CSV import/export, reminders, analytics, timelines, event sourcing, scraping, or metadata inference.
+This frontend contains the Phase 1 tracker table, add/edit form, delete confirmation, search, filters, the Phase 2 captured URL integration, and the Phase 3 manual transcript draft workflow. It does not include AI, voice recording, speech-to-text, CSV import/export, reminders, analytics, timelines, event sourcing, scraping, or metadata inference.

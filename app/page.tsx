@@ -41,6 +41,33 @@ type BrowserContext = {
 };
 
 type BrowserContextStatus = "idle" | "loading" | "loaded" | "error";
+type TranscriptStatus = "idle" | "parsing" | "draft-ready" | "applying-correction" | "saving" | "saved" | "error";
+
+type JobDraftPatch = {
+  company: string | null;
+  roles_add: string[];
+  roles_remove: string[];
+  employment_types_add: string[];
+  employment_types_remove: string[];
+  job_link: string | null;
+  use_latest_browser_url: boolean;
+  location: string | null;
+  status: string | null;
+  current_stages_add: string[];
+  current_stages_remove: string[];
+  priority: string | null;
+  engaged_days: number | null;
+  next_action: string | null;
+  comments_replace: string | null;
+  comments_append: string | null;
+};
+
+type ParsedTranscriptCommand = {
+  intent: "ADD_APPLICATION" | "PATCH_ACTIVE_DRAFT" | "SAVE_ACTIVE_DRAFT" | "CANCEL_ACTIVE_DRAFT" | "UNKNOWN";
+  patch: JobDraftPatch;
+  raw_transcript: string;
+  warnings: string[];
+};
 
 const emptyForm: ApplicationFormState = {
   company: "",
@@ -107,6 +134,28 @@ function formStateFromFormData(formData: FormData): ApplicationFormState {
 
 function sameValues(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function addUniqueValues(currentValues: string[], valuesToAdd: string[]) {
+  return valuesToAdd.reduce((nextValues, value) => {
+    return nextValues.includes(value) ? nextValues : [...nextValues, value];
+  }, currentValues);
+}
+
+function removeValues(currentValues: string[], valuesToRemove: string[]) {
+  return currentValues.filter((value) => !valuesToRemove.includes(value));
+}
+
+function appendText(currentValue: string, appendedValue: string) {
+  const cleanCurrent = currentValue.trim();
+  const cleanAppend = appendedValue.trim();
+  if (!cleanCurrent) {
+    return cleanAppend;
+  }
+  if (!cleanAppend) {
+    return cleanCurrent;
+  }
+  return `${cleanCurrent}\n${cleanAppend}`;
 }
 
 function areFormStatesEqual(left: ApplicationFormState, right: ApplicationFormState) {
@@ -208,6 +257,10 @@ function MultiSelectField({
 
 function ApplicationForm({
   mode,
+  heading,
+  submitLabel,
+  savingLabel,
+  cancelLabel,
   value,
   error,
   saving,
@@ -221,6 +274,10 @@ function ApplicationForm({
   onUseCapturedUrl,
 }: {
   mode: "add" | "edit";
+  heading?: string;
+  submitLabel?: string;
+  savingLabel?: string;
+  cancelLabel?: string;
   value: ApplicationFormState;
   error: string;
   saving: boolean;
@@ -247,9 +304,9 @@ function ApplicationForm({
   return (
     <form className="formPanel" onSubmit={submit}>
       <div className="formHeader">
-        <h2>{mode === "add" ? "Add Application" : "Edit Application"}</h2>
+        <h2>{heading ?? (mode === "add" ? "Add Application" : "Edit Application")}</h2>
         <button className="secondaryButton" type="button" onClick={onCancel} disabled={cancelDisabled}>
-          Cancel
+          {cancelLabel ?? "Cancel"}
         </button>
       </div>
 
@@ -378,7 +435,7 @@ function ApplicationForm({
 
       <div className="formActions">
         <button className="primaryButton" disabled={saving} type="submit">
-          {saving ? "Saving..." : "Save"}
+          {saving ? savingLabel ?? "Saving..." : submitLabel ?? "Save"}
         </button>
       </div>
     </form>
@@ -399,6 +456,14 @@ export default function Home() {
   const [browserContext, setBrowserContext] = useState<BrowserContext | null>(null);
   const [browserContextStatus, setBrowserContextStatus] = useState<BrowserContextStatus>("idle");
   const [browserContextError, setBrowserContextError] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [correctionTranscript, setCorrectionTranscript] = useState("");
+  const [transcriptStatus, setTranscriptStatus] = useState<TranscriptStatus>("idle");
+  const [transcriptError, setTranscriptError] = useState("");
+  const [transcriptWarnings, setTranscriptWarnings] = useState<string[]>([]);
+  const [draftValue, setDraftValue] = useState<ApplicationFormState | null>(null);
+  const [draftError, setDraftError] = useState("");
+  const [showDraftDiscardModal, setShowDraftDiscardModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({
@@ -524,6 +589,178 @@ export default function Home() {
     }));
   }
 
+  async function getLatestBrowserContextForDraft() {
+    const response = await requestJson<{ context: BrowserContext | null }>("/browser-context/latest");
+    setBrowserContext(response.context);
+    setBrowserContextStatus("loaded");
+    return response.context;
+  }
+
+  async function applyDraftPatch(currentDraft: ApplicationFormState, patch: JobDraftPatch) {
+    const nextDraft: ApplicationFormState = {
+      ...currentDraft,
+      roles_json: removeValues(addUniqueValues(currentDraft.roles_json, patch.roles_add), patch.roles_remove),
+      employment_types_json: removeValues(
+        addUniqueValues(currentDraft.employment_types_json, patch.employment_types_add),
+        patch.employment_types_remove,
+      ),
+      current_stages_json: removeValues(addUniqueValues(currentDraft.current_stages_json, patch.current_stages_add), patch.current_stages_remove),
+    };
+    const warnings: string[] = [];
+
+    if (patch.company !== null) {
+      nextDraft.company = patch.company;
+    }
+    if (patch.job_link !== null) {
+      nextDraft.job_link = patch.job_link;
+    }
+    if (patch.use_latest_browser_url) {
+      try {
+        const latestContext = await getLatestBrowserContextForDraft();
+        if (latestContext) {
+          nextDraft.job_link = latestContext.url;
+        } else {
+          warnings.push("Latest captured browser URL is unavailable.");
+        }
+      } catch (caught) {
+        warnings.push(caught instanceof Error ? `Latest captured browser URL is unavailable: ${caught.message}` : "Latest captured browser URL is unavailable.");
+      }
+    }
+    if (patch.location !== null) {
+      nextDraft.location = patch.location;
+    }
+    if (patch.status !== null) {
+      nextDraft.status = normalizeStatusForSelect(patch.status);
+    }
+    if (patch.priority !== null) {
+      nextDraft.priority = patch.priority;
+    }
+    if (patch.engaged_days !== null) {
+      nextDraft.engaged_days = patch.engaged_days;
+    }
+    if (patch.next_action !== null) {
+      nextDraft.next_action = patch.next_action;
+    }
+    if (patch.comments_replace !== null) {
+      nextDraft.comments = patch.comments_replace;
+    }
+    if (patch.comments_append !== null) {
+      nextDraft.comments = appendText(nextDraft.comments, patch.comments_append);
+    }
+
+    return { nextDraft, warnings };
+  }
+
+  async function parseTranscriptCommand() {
+    setTranscriptError("");
+    setTranscriptWarnings([]);
+    const trimmedTranscript = transcript.trim();
+    if (!trimmedTranscript) {
+      setTranscriptError("Enter a transcript to parse.");
+      setTranscriptStatus("error");
+      return;
+    }
+
+    setTranscriptStatus("parsing");
+    setDraftError("");
+    try {
+      const parsed = await requestJson<ParsedTranscriptCommand>("/transcript/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: trimmedTranscript }),
+      });
+      const { nextDraft, warnings } = await applyDraftPatch(emptyForm, parsed.patch);
+      setDraftValue(nextDraft);
+      setTranscriptWarnings([...parsed.warnings, ...warnings]);
+      setTranscriptStatus("draft-ready");
+    } catch (caught) {
+      setTranscriptError(caught instanceof Error ? caught.message : "Transcript parsing failed.");
+      setTranscriptStatus("error");
+    }
+  }
+
+  async function applyCorrectionTranscript() {
+    setTranscriptError("");
+    setTranscriptWarnings([]);
+    if (!draftValue) {
+      setTranscriptError("Create a draft before applying a correction.");
+      setTranscriptStatus("error");
+      return;
+    }
+
+    const trimmedCorrection = correctionTranscript.trim();
+    if (!trimmedCorrection) {
+      setTranscriptError("Enter a correction transcript to apply.");
+      setTranscriptStatus("error");
+      return;
+    }
+
+    setTranscriptStatus("applying-correction");
+    setDraftError("");
+    try {
+      const parsed = await requestJson<ParsedTranscriptCommand>("/transcript/parse-correction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: trimmedCorrection }),
+      });
+      const { nextDraft, warnings } = await applyDraftPatch(draftValue, parsed.patch);
+      setDraftValue(nextDraft);
+      setTranscriptWarnings([...parsed.warnings, ...warnings]);
+      setCorrectionTranscript("");
+      setTranscriptStatus("draft-ready");
+    } catch (caught) {
+      setTranscriptError(caught instanceof Error ? caught.message : "Correction parsing failed.");
+      setTranscriptStatus("error");
+    }
+  }
+
+  async function saveDraft(nextValue = draftValue) {
+    if (!nextValue) {
+      return;
+    }
+    if (!nextValue.company.trim()) {
+      setDraftError("Company is required.");
+      return;
+    }
+
+    setTranscriptStatus("saving");
+    setDraftError("");
+    setTranscriptError("");
+    try {
+      const savedRecord = await requestJson<ApplicationRecord>("/applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextValue),
+      });
+      setRecords((currentRecords) => upsertApplicationRecord(currentRecords, savedRecord));
+      setDraftValue(null);
+      setTranscript("");
+      setCorrectionTranscript("");
+      setTranscriptWarnings([]);
+      setTranscriptStatus("saved");
+      await loadRecords({ showLoading: false });
+    } catch (caught) {
+      setDraftError(caught instanceof Error ? caught.message : "Draft save failed.");
+      setTranscriptStatus("error");
+    }
+  }
+
+  function requestDraftDiscard() {
+    if (!draftValue) {
+      return;
+    }
+    setShowDraftDiscardModal(true);
+  }
+
+  function confirmDraftDiscard() {
+    setShowDraftDiscardModal(false);
+    setDraftValue(null);
+    setCorrectionTranscript("");
+    setTranscriptWarnings([]);
+    setDraftError("");
+    setTranscriptStatus("idle");
+  }
+
   async function saveForm(nextValue = formValue) {
     if (!nextValue.company.trim()) {
       setFormError("Company is required.");
@@ -588,6 +825,90 @@ export default function Home() {
         onUseCapturedUrl={useCapturedUrl}
       />
 
+      <section className="formPanel transcriptPanel">
+        <div className="formHeader">
+          <h2>Transcript Command</h2>
+        </div>
+
+        {transcriptError ? <p className="errorText">{transcriptError}</p> : null}
+        {transcriptWarnings.length ? (
+          <div className="warningBox">
+            {transcriptWarnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+          </div>
+        ) : null}
+        {transcriptStatus === "saved" ? <p className="successText">Draft saved as an application.</p> : null}
+
+        <label className="field">
+          <span>Transcript</span>
+          <textarea
+            className="transcriptInput"
+            placeholder="Add a Bootcoding AI Engineer internship. Use the current link. Set priority to medium. Add Tailored and Applied stages."
+            value={transcript}
+            onChange={(event) => setTranscript(event.target.value)}
+          />
+        </label>
+        <div className="formActions">
+          <button className="primaryButton" disabled={transcriptStatus === "parsing"} type="button" onClick={parseTranscriptCommand}>
+            {transcriptStatus === "parsing" ? "Parsing transcript..." : "Parse Transcript"}
+          </button>
+        </div>
+      </section>
+
+      {draftValue ? (
+        <>
+          <ApplicationForm
+            mode="add"
+            heading="Structured Draft Preview"
+            submitLabel="Save Application"
+            savingLabel="Saving..."
+            cancelLabel="Discard Draft"
+            value={draftValue}
+            error={draftError}
+            saving={transcriptStatus === "saving"}
+            onChange={(nextValue) => setDraftValue(nextValue)}
+            onCancel={requestDraftDiscard}
+            cancelDisabled={false}
+            onSubmit={saveDraft}
+            browserContext={browserContext}
+            browserContextStatus={browserContextStatus}
+            browserContextError={browserContextError}
+            onUseCapturedUrl={() => {
+              if (!browserContext) {
+                return;
+              }
+              setDraftValue((currentDraft) => (currentDraft ? { ...currentDraft, job_link: browserContext.url } : currentDraft));
+            }}
+          />
+
+          <section className="formPanel transcriptPanel">
+            <div className="formHeader">
+              <h2>Correction Transcript</h2>
+            </div>
+            <label className="field">
+              <span>Correction</span>
+              <textarea
+                className="transcriptInput"
+                placeholder="Remove Agentic AI Engineer tag. Add Networked stage. Append comment saying one request is pending."
+                value={correctionTranscript}
+                onChange={(event) => setCorrectionTranscript(event.target.value)}
+              />
+            </label>
+            <div className="formActions">
+              <button
+                className="primaryButton"
+                disabled={transcriptStatus === "applying-correction"}
+                type="button"
+                onClick={applyCorrectionTranscript}
+              >
+                {transcriptStatus === "applying-correction" ? "Applying correction..." : "Apply Correction"}
+              </button>
+            </div>
+          </section>
+        </>
+      ) : null}
+
       {showDiscardModal ? (
         <div className="modalBackdrop" role="presentation">
           <div aria-modal="true" className="modalPanel" role="dialog">
@@ -598,6 +919,23 @@ export default function Home() {
                 Discard
               </button>
               <button className="secondaryButton" type="button" onClick={() => setShowDiscardModal(false)}>
+                Keep editing
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showDraftDiscardModal ? (
+        <div className="modalBackdrop" role="presentation">
+          <div aria-modal="true" className="modalPanel" role="dialog">
+            <h2>Discard draft?</h2>
+            <p>The structured transcript draft will be lost.</p>
+            <div className="modalActions">
+              <button className="dangerButton" type="button" onClick={confirmDraftDiscard}>
+                Discard
+              </button>
+              <button className="secondaryButton" type="button" onClick={() => setShowDraftDiscardModal(false)}>
                 Keep editing
               </button>
             </div>

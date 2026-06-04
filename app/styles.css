@@ -186,6 +186,43 @@ h2 {
   font-size: 0.82rem;
 }
 
+.transcriptPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.transcriptInput {
+  min-height: 112px;
+}
+
+.warningBox,
+.successText {
+  border-radius: 6px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.warningBox {
+  background: #fff8e6;
+  border: 1px solid #e5c875;
+  color: #675018;
+}
+
+.warningBox p {
+  margin: 0;
+}
+
+.warningBox p + p {
+  margin-top: 6px;
+}
+
+.successText {
+  background: #ebf7f2;
+  border: 1px solid #abd7c8;
+  color: #176f5b;
+}
+
 .formActions {
   display: flex;
   justify-content: flex-end;
