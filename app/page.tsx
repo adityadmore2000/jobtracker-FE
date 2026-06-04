@@ -33,6 +33,15 @@ const STAGE_OPTIONS = ["Tailored", "Applied", "Networked", "Engaged", "COLD_MAIL
 const PRIORITY_OPTIONS = ["LOW", "MEDIUM", "HIGH"] as const;
 const STATUS_OPTIONS = ["Interested", "Applied", "Rejected", "Interview", "Offer", "Archived"] as const;
 
+type BrowserContext = {
+  id: number;
+  url: string;
+  page_title: string;
+  captured_at: string;
+};
+
+type BrowserContextStatus = "idle" | "loading" | "loaded" | "error";
+
 const emptyForm: ApplicationFormState = {
   company: "",
   roles_json: [],
@@ -206,6 +215,10 @@ function ApplicationForm({
   onCancel,
   cancelDisabled,
   onSubmit,
+  browserContext,
+  browserContextStatus,
+  browserContextError,
+  onUseCapturedUrl,
 }: {
   mode: "add" | "edit";
   value: ApplicationFormState;
@@ -215,6 +228,10 @@ function ApplicationForm({
   onCancel: () => void;
   cancelDisabled: boolean;
   onSubmit: (nextValue: ApplicationFormState) => void;
+  browserContext: BrowserContext | null;
+  browserContextStatus: BrowserContextStatus;
+  browserContextError: string;
+  onUseCapturedUrl: () => void;
 }) {
   function update<K extends keyof ApplicationFormState>(key: K, nextValue: ApplicationFormState[K]) {
     onChange({ ...value, [key]: nextValue });
@@ -260,6 +277,25 @@ function ApplicationForm({
             placeholder="https://example.com/job"
           />
         </label>
+
+        <div className="capturedContext">
+          <span>Latest captured page</span>
+          {browserContextStatus === "loading" ? <p>Loading captured page...</p> : null}
+          {browserContextStatus === "error" ? <p className="inlineError">Unable to load captured page: {browserContextError}</p> : null}
+          {browserContextStatus === "loaded" && !browserContext ? <p>No captured page available</p> : null}
+          {browserContextStatus === "loaded" && browserContext ? (
+            <>
+              <p className="contextStatus">Latest captured page available</p>
+              <strong>{browserContext.page_title || "Untitled page"}</strong>
+              <a href={browserContext.url} rel="noreferrer" target="_blank">
+                {browserContext.url}
+              </a>
+            </>
+          ) : null}
+          <button className="secondaryButton" disabled={!browserContext} type="button" onClick={onUseCapturedUrl}>
+            Use captured URL
+          </button>
+        </div>
 
         <label className="field">
           <span>LOCATION</span>
@@ -360,6 +396,9 @@ export default function Home() {
   const [formValue, setFormValue] = useState<ApplicationFormState>(emptyForm);
   const [initialFormValue, setInitialFormValue] = useState<ApplicationFormState>(emptyForm);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
+  const [browserContext, setBrowserContext] = useState<BrowserContext | null>(null);
+  const [browserContextStatus, setBrowserContextStatus] = useState<BrowserContextStatus>("idle");
+  const [browserContextError, setBrowserContextError] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({
@@ -391,6 +430,24 @@ export default function Home() {
   useEffect(() => {
     loadRecords();
   }, [loadRecords]);
+
+  const loadLatestBrowserContext = useCallback(async () => {
+    setBrowserContextStatus("loading");
+    setBrowserContextError("");
+    try {
+      const response = await requestJson<{ context: BrowserContext | null }>("/browser-context/latest");
+      setBrowserContext(response.context);
+      setBrowserContextStatus("loaded");
+    } catch (caught) {
+      setBrowserContext(null);
+      setBrowserContextError(caught instanceof Error ? caught.message : "Unable to load captured page.");
+      setBrowserContextStatus("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLatestBrowserContext();
+  }, [loadLatestBrowserContext]);
 
   const statusOptions = useMemo(() => {
     return Array.from(new Set(records.map((record) => record.status).filter(Boolean))).sort();
@@ -431,6 +488,7 @@ export default function Home() {
     setFormValue(nextFormValue);
     setInitialFormValue(nextFormValue);
     setFormError("");
+    loadLatestBrowserContext();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -453,6 +511,17 @@ export default function Home() {
   function confirmDiscard() {
     setShowDiscardModal(false);
     resetForm();
+  }
+
+  function useCapturedUrl() {
+    if (!browserContext) {
+      return;
+    }
+
+    setFormValue((currentValue) => ({
+      ...currentValue,
+      job_link: browserContext.url,
+    }));
   }
 
   async function saveForm(nextValue = formValue) {
@@ -513,6 +582,10 @@ export default function Home() {
         onCancel={requestCancel}
         cancelDisabled={cancelDisabled}
         onSubmit={saveForm}
+        browserContext={browserContext}
+        browserContextStatus={browserContextStatus}
+        browserContextError={browserContextError}
+        onUseCapturedUrl={useCapturedUrl}
       />
 
       {showDiscardModal ? (

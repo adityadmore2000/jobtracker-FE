@@ -143,6 +143,49 @@ h2 {
   grid-column: span 3;
 }
 
+.capturedContext {
+  align-self: end;
+  background: #f7fafc;
+  border: 1px solid #d8e0e7;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 38px;
+  padding: 10px;
+}
+
+.capturedContext span {
+  color: #394858;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.capturedContext p,
+.capturedContext strong,
+.capturedContext a {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.capturedContext strong {
+  font-size: 0.9rem;
+}
+
+.capturedContext a {
+  font-size: 0.82rem;
+}
+
+.capturedContext button {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.contextStatus {
+  color: #176f5b;
+  font-size: 0.82rem;
+}
+
 .formActions {
   display: flex;
   justify-content: flex-end;
@@ -266,6 +309,10 @@ a {
   color: #8a2525;
   margin: 0 0 12px;
   padding: 10px 12px;
+}
+
+.inlineError {
+  color: #8a2525;
 }
 
 .modalBackdrop {
