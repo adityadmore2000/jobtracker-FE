@@ -69,6 +69,36 @@ type ParsedTranscriptCommand = {
   warnings: string[];
 };
 
+type ApplicationCreateCandidateRequest = ApplicationFormState & {
+  raw_transcript?: string | null;
+  original_extracted_company_name?: string | null;
+  audio_reference?: string | null;
+};
+
+type ApplicationCreateCandidateResponse =
+  | {
+      status: "created";
+      requires_confirmation: false;
+      application: ApplicationRecord;
+    }
+  | {
+      status: "confirmation_required";
+      requires_confirmation: true;
+      candidate: ApplicationCreateCandidateRequest;
+    };
+
+type PendingCompanyConfirmation = {
+  source: "form" | "draft";
+  candidate: ApplicationCreateCandidateRequest;
+  confirmedCompanyName: string;
+};
+
+type DraftAsrContext = {
+  rawTranscript: string | null;
+  originalExtractedCompanyName: string | null;
+  audioReference: string | null;
+};
+
 const emptyForm: ApplicationFormState = {
   company: "",
   roles_json: [],
@@ -462,8 +492,10 @@ export default function Home() {
   const [transcriptError, setTranscriptError] = useState("");
   const [transcriptWarnings, setTranscriptWarnings] = useState<string[]>([]);
   const [draftValue, setDraftValue] = useState<ApplicationFormState | null>(null);
+  const [draftAsrContext, setDraftAsrContext] = useState<DraftAsrContext | null>(null);
   const [draftError, setDraftError] = useState("");
   const [showDraftDiscardModal, setShowDraftDiscardModal] = useState(false);
+  const [pendingCompanyConfirmation, setPendingCompanyConfirmation] = useState<PendingCompanyConfirmation | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({
@@ -671,6 +703,11 @@ export default function Home() {
       });
       const { nextDraft, warnings } = await applyDraftPatch(emptyForm, parsed.patch);
       setDraftValue(nextDraft);
+      setDraftAsrContext({
+        rawTranscript: parsed.raw_transcript,
+        originalExtractedCompanyName: parsed.patch.company,
+        audioReference: null,
+      });
       setTranscriptWarnings([...parsed.warnings, ...warnings]);
       setTranscriptStatus("draft-ready");
     } catch (caught) {
@@ -727,18 +764,15 @@ export default function Home() {
     setDraftError("");
     setTranscriptError("");
     try {
-      const savedRecord = await requestJson<ApplicationRecord>("/applications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(nextValue),
-      });
-      setRecords((currentRecords) => upsertApplicationRecord(currentRecords, savedRecord));
-      setDraftValue(null);
-      setTranscript("");
-      setCorrectionTranscript("");
-      setTranscriptWarnings([]);
-      setTranscriptStatus("saved");
-      await loadRecords({ showLoading: false });
+      await submitCreateCandidate(
+        {
+          ...nextValue,
+          raw_transcript: draftAsrContext?.rawTranscript ?? null,
+          original_extracted_company_name: draftAsrContext?.originalExtractedCompanyName ?? null,
+          audio_reference: draftAsrContext?.audioReference ?? null,
+        },
+        "draft",
+      );
     } catch (caught) {
       setDraftError(caught instanceof Error ? caught.message : "Draft save failed.");
       setTranscriptStatus("error");
@@ -755,10 +789,86 @@ export default function Home() {
   function confirmDraftDiscard() {
     setShowDraftDiscardModal(false);
     setDraftValue(null);
+    setDraftAsrContext(null);
     setCorrectionTranscript("");
     setTranscriptWarnings([]);
     setDraftError("");
     setTranscriptStatus("idle");
+  }
+
+  async function handleCreatedApplication(savedRecord: ApplicationRecord, source: "form" | "draft") {
+    setRecords((currentRecords) => upsertApplicationRecord(currentRecords, savedRecord));
+    if (source === "draft") {
+      setDraftValue(null);
+      setDraftAsrContext(null);
+      setTranscript("");
+      setCorrectionTranscript("");
+      setTranscriptWarnings([]);
+      setTranscriptStatus("saved");
+    } else {
+      resetForm();
+    }
+    await loadRecords({ showLoading: false });
+  }
+
+  async function submitCreateCandidate(candidate: ApplicationCreateCandidateRequest, source: "form" | "draft") {
+    const response = await requestJson<ApplicationCreateCandidateResponse>("/applications/create-candidate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(candidate),
+    });
+
+    if (response.status === "created") {
+      await handleCreatedApplication(response.application, source);
+      return;
+    }
+
+    setPendingCompanyConfirmation({
+      source,
+      candidate: response.candidate,
+      confirmedCompanyName: response.candidate.company,
+    });
+    if (source === "draft") {
+      setTranscriptStatus("draft-ready");
+    }
+  }
+
+  async function confirmPendingCompany() {
+    if (!pendingCompanyConfirmation) {
+      return;
+    }
+
+    const confirmedCompanyName = pendingCompanyConfirmation.confirmedCompanyName.trim();
+    if (!confirmedCompanyName) {
+      if (pendingCompanyConfirmation.source === "draft") {
+        setDraftError("Confirmed company name is required.");
+      } else {
+        setFormError("Confirmed company name is required.");
+      }
+      return;
+    }
+
+    try {
+      const savedRecord = await requestJson<ApplicationRecord>("/applications/confirm-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...pendingCompanyConfirmation.candidate,
+          confirmed_company_name: confirmedCompanyName,
+        }),
+      });
+      const source = pendingCompanyConfirmation.source;
+      setPendingCompanyConfirmation(null);
+      await handleCreatedApplication(savedRecord, source);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Company confirmation failed.";
+      if (pendingCompanyConfirmation.source === "draft") {
+        setDraftError(message);
+        setTranscriptStatus("error");
+      } else {
+        setFormError(message);
+      }
+    }
   }
 
   async function saveForm(nextValue = formValue) {
@@ -770,16 +880,18 @@ export default function Home() {
     setSaving(true);
     setFormError("");
     try {
-      const path = formMode === "edit" && editingId ? `/applications/${editingId}` : "/applications";
-      const savedRecord = await requestJson<ApplicationRecord>(path, {
-        method: formMode === "edit" ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(nextValue),
-      });
-
-      setRecords((currentRecords) => upsertApplicationRecord(currentRecords, savedRecord));
-      resetForm();
-      await loadRecords({ showLoading: false });
+      if (formMode === "edit" && editingId) {
+        const savedRecord = await requestJson<ApplicationRecord>(`/applications/${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(nextValue),
+        });
+        setRecords((currentRecords) => upsertApplicationRecord(currentRecords, savedRecord));
+        resetForm();
+        await loadRecords({ showLoading: false });
+      } else {
+        await submitCreateCandidate(nextValue, "form");
+      }
     } catch (caught) {
       setFormError(caught instanceof Error ? caught.message : "Save failed.");
     } finally {
@@ -937,6 +1049,36 @@ export default function Home() {
               </button>
               <button className="secondaryButton" type="button" onClick={() => setShowDraftDiscardModal(false)}>
                 Keep editing
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingCompanyConfirmation ? (
+        <div className="modalBackdrop" role="presentation">
+          <div aria-modal="true" className="modalPanel" role="dialog">
+            <h2>Confirm company name</h2>
+            <label className="field">
+              <span>Company</span>
+              <input
+                value={pendingCompanyConfirmation.confirmedCompanyName}
+                onChange={(event) =>
+                  setPendingCompanyConfirmation((current) =>
+                    current ? { ...current, confirmedCompanyName: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            {pendingCompanyConfirmation.candidate.roles_json.length ? (
+              <p>Role: {pendingCompanyConfirmation.candidate.roles_json.join(", ")}</p>
+            ) : null}
+            <div className="modalActions">
+              <button className="secondaryButton" type="button" onClick={() => setPendingCompanyConfirmation(null)}>
+                Cancel
+              </button>
+              <button className="primaryButton" type="button" onClick={confirmPendingCompany}>
+                Confirm and Add
               </button>
             </div>
           </div>

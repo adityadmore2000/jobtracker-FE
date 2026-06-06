@@ -65,6 +65,16 @@ Phase 3 adds a manual transcript text area that sends typed English text to the 
 - `Use current link` fills `JOB LINK` only when the transcript explicitly asks for the latest captured URL and a captured URL exists.
 - `Current Stage`, `NEXT ACTION`, `COMMENTS`, and `ENGAGED (# OF DAYS)` are only populated when explicitly dictated.
 
+## New Company Confirmation
+
+Application creation now asks the backend whether the submitted company is already known.
+
+- Existing-company creates keep the current low-friction path and save immediately.
+- Existing edits still use the current fast `PATCH` path and do not show the popup.
+- New-company creates show an editable confirmation modal before the row is persisted.
+- Transcript draft saves follow the same rule as manual creates.
+- Canceling the popup leaves the form or draft intact and does not create an application.
+
 ## Manual Validation
 
 ```text
@@ -83,6 +93,11 @@ Phase 3 adds a manual transcript text area that sends typed English text to the 
 [ ] Correction transcript updates the draft without saving
 [ ] Use current link in a transcript fills JOB LINK only when a captured URL exists
 [ ] Current Stage remains independent from STATUS, COMMENTS, and NEXT ACTION
+[ ] Existing-company create saves without a confirmation popup
+[ ] New-company create shows the confirmation popup
+[ ] Correcting a new company name in the popup saves the canonical name
+[ ] Canceling the confirmation popup does not create an application
+[ ] Transcript draft save uses the same new-company confirmation flow
 ```
 
 ## Scope
