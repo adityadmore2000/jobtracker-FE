@@ -1,6 +1,6 @@
-# ApplicationOps Web
+# Job Tracker Web
 
-Standalone Next.js frontend for the ApplicationOps manual job application tracker.
+Standalone Next.js frontend for the Job Tracker manual job application tracker.
 
 ## Setup
 
@@ -74,6 +74,28 @@ Application creation now asks the backend whether the submitted company is alrea
 - New-company creates show an editable confirmation modal before the row is persisted.
 - Transcript draft saves follow the same rule as manual creates.
 - Canceling the popup leaves the form or draft intact and does not create an application.
+
+## Immediate Adaptation Loop
+
+The frontend now participates in the immediate local adaptation loop like this:
+
+```text
+manual transcript text
+    -> backend transcript parser
+    -> editable structured draft
+    -> backend candidate check
+    -> confirmation popup only for genuinely new companies
+    -> confirmed save
+    -> later backend hotword refresh for new transcriptions
+```
+
+The popup is not a generic extra confirmation step. It appears only when the backend says the create flow introduced a new company candidate.
+
+## Current Limitations
+
+- The frontend does not trigger Whisper fine-tuning or model deployment.
+- The confirmation popup protects create flows only; edits intentionally keep the fast existing path.
+- Audio references are not captured by the current frontend flow.
 
 ## Manual Validation
 

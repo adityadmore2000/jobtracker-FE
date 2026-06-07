@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "ApplicationOps Tracker",
+  title: "Job Tracker",
   description: "Manual CRUD foundation for a local-first job application tracker",
 };
 

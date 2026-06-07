@@ -914,7 +914,7 @@ export default function Home() {
     <main className="pageShell">
       <header className="topBar">
         <div>
-          <p className="eyebrow">ApplicationOps MVP</p>
+          <p className="eyebrow">Job Tracker</p>
           <h1>Job Application Tracker</h1>
         </div>
         <button className="secondaryButton" type="button" onClick={() => loadRecords()}>
