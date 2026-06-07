@@ -17,6 +17,20 @@ export type ApplicationRecord = {
 
 export type ApplicationFormState = Omit<ApplicationRecord, "id" | "created_at" | "updated_at">;
 
+export type ActiveDraftState = {
+  company: string;
+  roles: string[];
+  employment_types: string[];
+  job_link: string;
+  location: string;
+  status: string;
+  current_stages: string[];
+  priority: string;
+  engaged_days: number | null;
+  next_action: string;
+  comments: string;
+};
+
 export function toggleMultiSelectValue(values: string[], value: string) {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
@@ -47,4 +61,20 @@ export function upsertApplicationRecord(records: ApplicationRecord[], savedRecor
   }
 
   return records.map((record) => (record.id === normalizedRecord.id ? normalizedRecord : record));
+}
+
+export function toActiveDraftState(value: ApplicationFormState): ActiveDraftState {
+  return {
+    company: value.company,
+    roles: value.roles_json,
+    employment_types: value.employment_types_json,
+    job_link: value.job_link,
+    location: value.location,
+    status: value.status,
+    current_stages: value.current_stages_json,
+    priority: value.priority,
+    engaged_days: Number.isFinite(value.engaged_days) ? value.engaged_days : null,
+    next_action: value.next_action,
+    comments: value.comments,
+  };
 }

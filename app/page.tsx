@@ -2,9 +2,11 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActiveDraftState,
   ApplicationFormState,
   ApplicationRecord,
   normalizeApplicationRecord,
+  toActiveDraftState,
   toggleMultiSelectValue,
   upsertApplicationRecord,
 } from "./trackerState";
@@ -41,32 +43,54 @@ type BrowserContext = {
 };
 
 type BrowserContextStatus = "idle" | "loading" | "loaded" | "error";
-type TranscriptStatus = "idle" | "parsing" | "draft-ready" | "applying-correction" | "saving" | "saved" | "error";
+type TranscriptStatus = "idle" | "parsing" | "draft-ready" | "saving" | "saved" | "error";
 
-type JobDraftPatch = {
-  company: string | null;
-  roles_add: string[];
-  roles_remove: string[];
-  employment_types_add: string[];
-  employment_types_remove: string[];
-  job_link: string | null;
-  use_latest_browser_url: boolean;
-  location: string | null;
-  status: string | null;
-  current_stages_add: string[];
-  current_stages_remove: string[];
-  priority: string | null;
-  engaged_days: number | null;
-  next_action: string | null;
-  comments_replace: string | null;
-  comments_append: string | null;
+type SemanticFieldPatch = {
+  company?: string | null;
+  roles?: string[] | null;
+  employment_types?: string[] | null;
+  job_link?: string | null;
+  location?: string | null;
+  status?: string | null;
+  current_stages?: string[] | null;
+  priority?: string | null;
+  engaged_days?: number | null;
+  next_action?: string | null;
+  comments?: string | null;
 };
 
-type ParsedTranscriptCommand = {
-  intent: "ADD_APPLICATION" | "PATCH_ACTIVE_DRAFT" | "SAVE_ACTIVE_DRAFT" | "CANCEL_ACTIVE_DRAFT" | "UNKNOWN";
-  patch: JobDraftPatch;
+type SemanticToolCallProposal = {
+  tool_name:
+    | "patch_active_draft"
+    | "preview_existing_application_update"
+    | "request_draft_save"
+    | "attach_latest_browser_context"
+    | "ask_clarification"
+    | null;
+  arguments: Record<string, unknown>;
+};
+
+type SemanticInterpreterMetrics = {
+  latency_ms: number;
+  total_duration_ns: number | null;
+  load_duration_ns: number | null;
+  prompt_eval_duration_ns: number | null;
+  eval_duration_ns: number | null;
+};
+
+type SemanticTranscriptResponse = {
+  status: "preview" | "clarification_required" | "unsupported" | "unavailable";
+  operation: "create" | "update" | "none";
+  proposal: SemanticToolCallProposal;
   raw_transcript: string;
+  application_id: number | null;
+  draft: ApplicationFormState | null;
+  drafts: ApplicationFormState[];
   warnings: string[];
+  needs_confirmation: boolean;
+  confirmation_kind: "none" | "multi_application" | "context";
+  clarification_question: string | null;
+  interpreter_metrics: SemanticInterpreterMetrics | null;
 };
 
 type ApplicationCreateCandidateRequest = ApplicationFormState & {
@@ -98,6 +122,14 @@ type DraftAsrContext = {
   originalExtractedCompanyName: string | null;
   audioReference: string | null;
 };
+
+type TranscriptContext = {
+  active_draft: ActiveDraftState | null;
+  active_application: { application_id: number } | null;
+  recent_actions: string[];
+};
+
+type DraftMode = "create" | "update";
 
 const emptyForm: ApplicationFormState = {
   company: "",
@@ -166,26 +198,12 @@ function sameValues(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function addUniqueValues(currentValues: string[], valuesToAdd: string[]) {
-  return valuesToAdd.reduce((nextValues, value) => {
-    return nextValues.includes(value) ? nextValues : [...nextValues, value];
-  }, currentValues);
+function primaryRole(value: ApplicationFormState | ApplicationRecord | null) {
+  return value?.roles_json[0] ?? null;
 }
 
-function removeValues(currentValues: string[], valuesToRemove: string[]) {
-  return currentValues.filter((value) => !valuesToRemove.includes(value));
-}
-
-function appendText(currentValue: string, appendedValue: string) {
-  const cleanCurrent = currentValue.trim();
-  const cleanAppend = appendedValue.trim();
-  if (!cleanCurrent) {
-    return cleanAppend;
-  }
-  if (!cleanAppend) {
-    return cleanCurrent;
-  }
-  return `${cleanCurrent}\n${cleanAppend}`;
+function pushRecentAction(recentActions: string[], nextAction: string) {
+  return [...recentActions, nextAction.trim()].filter(Boolean).slice(-3);
 }
 
 function areFormStatesEqual(left: ApplicationFormState, right: ApplicationFormState) {
@@ -202,6 +220,47 @@ function areFormStatesEqual(left: ApplicationFormState, right: ApplicationFormSt
     left.next_action === right.next_action &&
     left.comments === right.comments
   );
+}
+
+function normalizeDraftFieldPatch(fields: unknown): Partial<Record<keyof SemanticFieldPatch, true>> {
+  if (!fields || typeof fields !== "object" || Array.isArray(fields)) {
+    return {};
+  }
+
+  return Object.fromEntries(Object.keys(fields).map((key) => [key, true])) as Partial<Record<keyof SemanticFieldPatch, true>>;
+}
+
+function mergeDraftWithExplicitPatch(currentDraft: ApplicationFormState | null, parsedDraft: ApplicationFormState, fields: unknown) {
+  const explicitFields = normalizeDraftFieldPatch(fields);
+  const nextDraft = currentDraft ? { ...currentDraft } : { ...emptyForm };
+
+  if (explicitFields.company) nextDraft.company = parsedDraft.company;
+  if (explicitFields.roles) nextDraft.roles_json = parsedDraft.roles_json;
+  if (explicitFields.employment_types) nextDraft.employment_types_json = parsedDraft.employment_types_json;
+  if (explicitFields.job_link) nextDraft.job_link = parsedDraft.job_link;
+  if (explicitFields.location) nextDraft.location = parsedDraft.location;
+  if (explicitFields.status) nextDraft.status = parsedDraft.status;
+  if (explicitFields.current_stages) nextDraft.current_stages_json = parsedDraft.current_stages_json;
+  if (explicitFields.priority) nextDraft.priority = parsedDraft.priority;
+  if (explicitFields.engaged_days) nextDraft.engaged_days = parsedDraft.engaged_days;
+  if (explicitFields.next_action) nextDraft.next_action = parsedDraft.next_action;
+  if (explicitFields.comments) nextDraft.comments = parsedDraft.comments;
+
+  if (!currentDraft) {
+    if (!explicitFields.company) nextDraft.company = parsedDraft.company;
+    if (!explicitFields.roles) nextDraft.roles_json = parsedDraft.roles_json;
+    if (!explicitFields.employment_types) nextDraft.employment_types_json = parsedDraft.employment_types_json;
+    if (!explicitFields.job_link) nextDraft.job_link = parsedDraft.job_link;
+    if (!explicitFields.location) nextDraft.location = parsedDraft.location;
+    if (!explicitFields.status) nextDraft.status = parsedDraft.status;
+    if (!explicitFields.current_stages) nextDraft.current_stages_json = parsedDraft.current_stages_json;
+    if (!explicitFields.priority) nextDraft.priority = parsedDraft.priority;
+    if (!explicitFields.engaged_days) nextDraft.engaged_days = parsedDraft.engaged_days;
+    if (!explicitFields.next_action) nextDraft.next_action = parsedDraft.next_action;
+    if (!explicitFields.comments) nextDraft.comments = parsedDraft.comments;
+  }
+
+  return nextDraft;
 }
 
 async function requestJson<T>(path: string, options: RequestInit = {}) {
@@ -487,12 +546,18 @@ export default function Home() {
   const [browserContextStatus, setBrowserContextStatus] = useState<BrowserContextStatus>("idle");
   const [browserContextError, setBrowserContextError] = useState("");
   const [transcript, setTranscript] = useState("");
-  const [correctionTranscript, setCorrectionTranscript] = useState("");
   const [transcriptStatus, setTranscriptStatus] = useState<TranscriptStatus>("idle");
   const [transcriptError, setTranscriptError] = useState("");
   const [transcriptWarnings, setTranscriptWarnings] = useState<string[]>([]);
   const [draftValue, setDraftValue] = useState<ApplicationFormState | null>(null);
+  const [draftMode, setDraftMode] = useState<DraftMode>("create");
+  const [draftApplicationId, setDraftApplicationId] = useState<number | null>(null);
   const [draftAsrContext, setDraftAsrContext] = useState<DraftAsrContext | null>(null);
+  const [transcriptContext, setTranscriptContext] = useState<TranscriptContext>({
+    active_draft: null,
+    active_application: null,
+    recent_actions: [],
+  });
   const [draftError, setDraftError] = useState("");
   const [showDraftDiscardModal, setShowDraftDiscardModal] = useState(false);
   const [pendingCompanyConfirmation, setPendingCompanyConfirmation] = useState<PendingCompanyConfirmation | null>(null);
@@ -576,6 +641,10 @@ export default function Home() {
     setFormValue(emptyForm);
     setInitialFormValue(emptyForm);
     setFormError("");
+    setTranscriptContext((currentContext) => ({
+      ...currentContext,
+      active_application: null,
+    }));
   }
 
   function startEdit(record: ApplicationRecord) {
@@ -585,6 +654,10 @@ export default function Home() {
     setFormValue(nextFormValue);
     setInitialFormValue(nextFormValue);
     setFormError("");
+    setTranscriptContext((currentContext) => ({
+      ...currentContext,
+      active_application: { application_id: record.id },
+    }));
     loadLatestBrowserContext();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -621,66 +694,33 @@ export default function Home() {
     }));
   }
 
-  async function getLatestBrowserContextForDraft() {
-    const response = await requestJson<{ context: BrowserContext | null }>("/browser-context/latest");
-    setBrowserContext(response.context);
-    setBrowserContextStatus("loaded");
-    return response.context;
+  function buildTranscriptRequestContext(): TranscriptContext {
+    if (draftValue) {
+      return {
+        active_draft: toActiveDraftState(draftValue),
+        active_application: transcriptContext.active_application,
+        recent_actions: transcriptContext.recent_actions,
+      };
+    }
+
+    return transcriptContext;
   }
 
-  async function applyDraftPatch(currentDraft: ApplicationFormState, patch: JobDraftPatch) {
-    const nextDraft: ApplicationFormState = {
-      ...currentDraft,
-      roles_json: removeValues(addUniqueValues(currentDraft.roles_json, patch.roles_add), patch.roles_remove),
-      employment_types_json: removeValues(
-        addUniqueValues(currentDraft.employment_types_json, patch.employment_types_add),
-        patch.employment_types_remove,
+  function openDraftPreview(draft: ApplicationFormState, mode: DraftMode, applicationId: number | null, asrContext: DraftAsrContext, warnings: string[]) {
+    setDraftValue(draft);
+    setDraftMode(mode);
+    setDraftApplicationId(applicationId);
+    setDraftAsrContext(asrContext);
+    setTranscriptWarnings(warnings);
+    setTranscriptStatus("draft-ready");
+    setTranscriptContext((currentContext) => ({
+      active_draft: toActiveDraftState(draft),
+      active_application: currentContext.active_application,
+      recent_actions: pushRecentAction(
+        currentContext.recent_actions,
+        `${mode === "update" ? "Prepared update preview" : "Prepared draft"} for ${draft.company}${primaryRole(draft) ? ` - ${primaryRole(draft)}` : ""}`,
       ),
-      current_stages_json: removeValues(addUniqueValues(currentDraft.current_stages_json, patch.current_stages_add), patch.current_stages_remove),
-    };
-    const warnings: string[] = [];
-
-    if (patch.company !== null) {
-      nextDraft.company = patch.company;
-    }
-    if (patch.job_link !== null) {
-      nextDraft.job_link = patch.job_link;
-    }
-    if (patch.use_latest_browser_url) {
-      try {
-        const latestContext = await getLatestBrowserContextForDraft();
-        if (latestContext) {
-          nextDraft.job_link = latestContext.url;
-        } else {
-          warnings.push("Latest captured browser URL is unavailable.");
-        }
-      } catch (caught) {
-        warnings.push(caught instanceof Error ? `Latest captured browser URL is unavailable: ${caught.message}` : "Latest captured browser URL is unavailable.");
-      }
-    }
-    if (patch.location !== null) {
-      nextDraft.location = patch.location;
-    }
-    if (patch.status !== null) {
-      nextDraft.status = normalizeStatusForSelect(patch.status);
-    }
-    if (patch.priority !== null) {
-      nextDraft.priority = patch.priority;
-    }
-    if (patch.engaged_days !== null) {
-      nextDraft.engaged_days = patch.engaged_days;
-    }
-    if (patch.next_action !== null) {
-      nextDraft.next_action = patch.next_action;
-    }
-    if (patch.comments_replace !== null) {
-      nextDraft.comments = patch.comments_replace;
-    }
-    if (patch.comments_append !== null) {
-      nextDraft.comments = appendText(nextDraft.comments, patch.comments_append);
-    }
-
-    return { nextDraft, warnings };
+    }));
   }
 
   async function parseTranscriptCommand() {
@@ -696,57 +736,54 @@ export default function Home() {
     setTranscriptStatus("parsing");
     setDraftError("");
     try {
-      const parsed = await requestJson<ParsedTranscriptCommand>("/transcript/parse", {
+      const parsed = await requestJson<SemanticTranscriptResponse>("/transcript/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: trimmedTranscript }),
+        body: JSON.stringify({ transcript: trimmedTranscript, context: buildTranscriptRequestContext() }),
       });
-      const { nextDraft, warnings } = await applyDraftPatch(emptyForm, parsed.patch);
-      setDraftValue(nextDraft);
-      setDraftAsrContext({
+
+      if (parsed.status !== "preview") {
+        setTranscriptWarnings(parsed.warnings);
+        setTranscriptError(parsed.clarification_question ?? parsed.warnings[0] ?? "Transcript interpretation failed.");
+        setTranscriptStatus("error");
+        return;
+      }
+
+      const proposalFields =
+        parsed.proposal.tool_name === "patch_active_draft" && parsed.proposal.arguments && typeof parsed.proposal.arguments === "object"
+          ? (parsed.proposal.arguments as { fields?: unknown }).fields
+          : undefined;
+
+      const asrContext: DraftAsrContext = {
         rawTranscript: parsed.raw_transcript,
-        originalExtractedCompanyName: parsed.patch.company,
+        originalExtractedCompanyName: parsed.draft?.company ?? draftValue?.company ?? null,
         audioReference: null,
-      });
-      setTranscriptWarnings([...parsed.warnings, ...warnings]);
-      setTranscriptStatus("draft-ready");
+      };
+
+      if (parsed.proposal.tool_name === "request_draft_save") {
+        setTranscriptWarnings(parsed.warnings);
+        if (parsed.draft) {
+          setDraftValue(parsed.draft);
+        }
+        await saveDraft(parsed.draft ?? draftValue);
+        return;
+      }
+
+      if (parsed.operation === "update" && parsed.draft && parsed.application_id !== null) {
+        openDraftPreview(parsed.draft, "update", parsed.application_id, asrContext, parsed.warnings);
+        return;
+      }
+
+      if (parsed.operation === "create" && parsed.draft) {
+        const mergedDraft = mergeDraftWithExplicitPatch(draftValue, parsed.draft, proposalFields);
+        openDraftPreview(mergedDraft, "create", null, asrContext, parsed.warnings);
+        return;
+      }
+
+      setTranscriptError("Transcript interpretation did not return a usable preview.");
+      setTranscriptStatus("error");
     } catch (caught) {
       setTranscriptError(caught instanceof Error ? caught.message : "Transcript parsing failed.");
-      setTranscriptStatus("error");
-    }
-  }
-
-  async function applyCorrectionTranscript() {
-    setTranscriptError("");
-    setTranscriptWarnings([]);
-    if (!draftValue) {
-      setTranscriptError("Create a draft before applying a correction.");
-      setTranscriptStatus("error");
-      return;
-    }
-
-    const trimmedCorrection = correctionTranscript.trim();
-    if (!trimmedCorrection) {
-      setTranscriptError("Enter a correction transcript to apply.");
-      setTranscriptStatus("error");
-      return;
-    }
-
-    setTranscriptStatus("applying-correction");
-    setDraftError("");
-    try {
-      const parsed = await requestJson<ParsedTranscriptCommand>("/transcript/parse-correction", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: trimmedCorrection }),
-      });
-      const { nextDraft, warnings } = await applyDraftPatch(draftValue, parsed.patch);
-      setDraftValue(nextDraft);
-      setTranscriptWarnings([...parsed.warnings, ...warnings]);
-      setCorrectionTranscript("");
-      setTranscriptStatus("draft-ready");
-    } catch (caught) {
-      setTranscriptError(caught instanceof Error ? caught.message : "Correction parsing failed.");
       setTranscriptStatus("error");
     }
   }
@@ -764,19 +801,44 @@ export default function Home() {
     setDraftError("");
     setTranscriptError("");
     try {
-      await submitCreateCandidate(
-        {
-          ...nextValue,
-          raw_transcript: draftAsrContext?.rawTranscript ?? null,
-          original_extracted_company_name: draftAsrContext?.originalExtractedCompanyName ?? null,
-          audio_reference: draftAsrContext?.audioReference ?? null,
-        },
-        "draft",
-      );
+      if (draftMode === "update" && draftApplicationId !== null) {
+        const savedRecord = await requestJson<ApplicationRecord>(`/applications/${draftApplicationId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(nextValue),
+        });
+        await handleCreatedApplication(savedRecord, "draft");
+      } else {
+        await submitCreateCandidate(
+          {
+            ...nextValue,
+            raw_transcript: draftAsrContext?.rawTranscript ?? null,
+            original_extracted_company_name: draftAsrContext?.originalExtractedCompanyName ?? null,
+            audio_reference: draftAsrContext?.audioReference ?? null,
+          },
+          "draft",
+        );
+      }
     } catch (caught) {
       setDraftError(caught instanceof Error ? caught.message : "Draft save failed.");
       setTranscriptStatus("error");
     }
+  }
+
+  function clearTranscriptDraftState(nextStatus: TranscriptStatus) {
+    setDraftValue(null);
+    setDraftMode("create");
+    setDraftApplicationId(null);
+    setDraftAsrContext(null);
+    setTranscript("");
+    setTranscriptWarnings([]);
+    setDraftError("");
+    setTranscriptStatus(nextStatus);
+    setTranscriptContext((currentContext) => ({
+      ...currentContext,
+      active_draft: null,
+      active_application: null,
+    }));
   }
 
   function requestDraftDiscard() {
@@ -788,23 +850,21 @@ export default function Home() {
 
   function confirmDraftDiscard() {
     setShowDraftDiscardModal(false);
-    setDraftValue(null);
-    setDraftAsrContext(null);
-    setCorrectionTranscript("");
-    setTranscriptWarnings([]);
-    setDraftError("");
-    setTranscriptStatus("idle");
+    clearTranscriptDraftState("idle");
   }
 
   async function handleCreatedApplication(savedRecord: ApplicationRecord, source: "form" | "draft") {
     setRecords((currentRecords) => upsertApplicationRecord(currentRecords, savedRecord));
+    setTranscriptContext((currentContext) => ({
+      active_draft: null,
+      active_application: currentContext.active_application,
+      recent_actions: pushRecentAction(
+        currentContext.recent_actions,
+        `Saved transcript changes for ${savedRecord.company}${primaryRole(savedRecord) ? ` - ${primaryRole(savedRecord)}` : ""}`,
+      ),
+    }));
     if (source === "draft") {
-      setDraftValue(null);
-      setDraftAsrContext(null);
-      setTranscript("");
-      setCorrectionTranscript("");
-      setTranscriptWarnings([]);
-      setTranscriptStatus("saved");
+      clearTranscriptDraftState("saved");
     } else {
       resetForm();
     }
@@ -838,6 +898,7 @@ export default function Home() {
       return;
     }
 
+    const currentConfirmation = pendingCompanyConfirmation;
     const confirmedCompanyName = pendingCompanyConfirmation.confirmedCompanyName.trim();
     if (!confirmedCompanyName) {
       if (pendingCompanyConfirmation.source === "draft") {
@@ -853,16 +914,15 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...pendingCompanyConfirmation.candidate,
+          ...currentConfirmation.candidate,
           confirmed_company_name: confirmedCompanyName,
         }),
       });
-      const source = pendingCompanyConfirmation.source;
       setPendingCompanyConfirmation(null);
-      await handleCreatedApplication(savedRecord, source);
+      await handleCreatedApplication(savedRecord, currentConfirmation.source);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Company confirmation failed.";
-      if (pendingCompanyConfirmation.source === "draft") {
+      if (currentConfirmation.source === "draft") {
         setDraftError(message);
         setTranscriptStatus("error");
       } else {
@@ -942,7 +1002,7 @@ export default function Home() {
           <h2>Transcript Command</h2>
         </div>
 
-        {transcriptError ? <p className="errorText">{transcriptError}</p> : null}
+        {transcriptError ? <p className="errorText">Transcript follow-up needs attention: {transcriptError}</p> : null}
         {transcriptWarnings.length ? (
           <div className="warningBox">
             {transcriptWarnings.map((warning) => (
@@ -950,20 +1010,20 @@ export default function Home() {
             ))}
           </div>
         ) : null}
-        {transcriptStatus === "saved" ? <p className="successText">Draft saved as an application.</p> : null}
+        {transcriptStatus === "saved" ? <p className="successText">Transcript changes were saved.</p> : null}
 
         <label className="field">
           <span>Transcript</span>
           <textarea
             className="transcriptInput"
-            placeholder="Add a Bootcoding AI Engineer internship. Use the current link. Set priority to medium. Add Tailored and Applied stages."
+            placeholder="Neilsoft sathi application add kar. GENAI Engineer only, fulltime ani onsite. Applied stage thev."
             value={transcript}
             onChange={(event) => setTranscript(event.target.value)}
           />
         </label>
         <div className="formActions">
           <button className="primaryButton" disabled={transcriptStatus === "parsing"} type="button" onClick={parseTranscriptCommand}>
-            {transcriptStatus === "parsing" ? "Parsing transcript..." : "Parse Transcript"}
+            {transcriptStatus === "parsing" ? "Applying transcript..." : "Apply Transcript Command"}
           </button>
         </div>
       </section>
@@ -972,8 +1032,8 @@ export default function Home() {
         <>
           <ApplicationForm
             mode="add"
-            heading="Structured Draft Preview"
-            submitLabel="Save Application"
+            heading={draftMode === "update" ? "Structured Update Preview" : "Structured Draft Preview"}
+            submitLabel={draftMode === "update" ? "Save Update" : "Save Application"}
             savingLabel="Saving..."
             cancelLabel="Discard Draft"
             value={draftValue}
@@ -993,31 +1053,6 @@ export default function Home() {
               setDraftValue((currentDraft) => (currentDraft ? { ...currentDraft, job_link: browserContext.url } : currentDraft));
             }}
           />
-
-          <section className="formPanel transcriptPanel">
-            <div className="formHeader">
-              <h2>Correction Transcript</h2>
-            </div>
-            <label className="field">
-              <span>Correction</span>
-              <textarea
-                className="transcriptInput"
-                placeholder="Remove Agentic AI Engineer tag. Add Networked stage. Append comment saying one request is pending."
-                value={correctionTranscript}
-                onChange={(event) => setCorrectionTranscript(event.target.value)}
-              />
-            </label>
-            <div className="formActions">
-              <button
-                className="primaryButton"
-                disabled={transcriptStatus === "applying-correction"}
-                type="button"
-                onClick={applyCorrectionTranscript}
-              >
-                {transcriptStatus === "applying-correction" ? "Applying correction..." : "Apply Correction"}
-              </button>
-            </div>
-          </section>
         </>
       ) : null}
 
