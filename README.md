@@ -60,6 +60,7 @@ uvicorn app.main:app --reload
 Phase 3 adds a manual transcript text area that sends typed commands to the backend semantic interpreter. The Transcript Command area now behaves like a conversational form editor over one active unsaved draft.
 
 - Drafts are never saved automatically.
+- `save it` can prepare the existing preview for persistence, but it still requires the user to click the existing `Save Application` or `Save Update` button.
 - The frontend sends compact `active_draft`, `active_application`, and bounded `recent_actions` context with each transcript turn.
 - Create previews keep unmentioned fields unchanged between turns.
 - Partial unsaved drafts are valid. Missing role, type, status, or stage does not immediately require clarification.
@@ -164,6 +165,8 @@ The popup is not a generic extra confirmation step. It appears only when the bac
 [ ] Correcting a new company name in the popup saves the canonical name
 [ ] Canceling the confirmation popup does not create an application
 [ ] Transcript draft save uses the same new-company confirmation flow
+[ ] `save it` does not directly persist from the LLM tool call
+[ ] `save it` clearly routes the user back to the existing Save button flow
 ```
 
 ## Scope

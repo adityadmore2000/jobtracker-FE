@@ -761,11 +761,22 @@ export default function Home() {
       };
 
       if (parsed.proposal.tool_name === "request_draft_save") {
-        setTranscriptWarnings(parsed.warnings);
+        setTranscriptWarnings([
+          ...parsed.warnings,
+          draftMode === "update"
+            ? "Review the update preview, then click Save Update to persist it."
+            : "Review the draft preview, then click Save Application to persist it.",
+        ]);
         if (parsed.draft) {
-          setDraftValue(parsed.draft);
+          openDraftPreview(parsed.draft, draftMode, draftApplicationId, asrContext, [
+            ...parsed.warnings,
+            draftMode === "update"
+              ? "Review the update preview, then click Save Update to persist it."
+              : "Review the draft preview, then click Save Application to persist it.",
+          ]);
+        } else {
+          setTranscriptStatus("draft-ready");
         }
-        await saveDraft(parsed.draft ?? draftValue);
         return;
       }
 
