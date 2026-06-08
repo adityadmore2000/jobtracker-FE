@@ -73,7 +73,19 @@ Phase 3 adds a manual transcript text area that sends typed commands to the back
 - `recent_actions` are prompt context only and do not authorize persisted-row mutation.
 - If the local interpreter is unavailable, the UI shows a recoverable error and nothing is saved.
 - The frontend no longer uses regex-based transcript templates.
-- LiveKit has not been added yet.
+
+## Voice Input
+
+The frontend now includes a compact manual LiveKit voice transport panel near the typed `Transcript Command` area.
+
+- `Connect voice` fetches a short-lived browser participant token from `POST /livekit/token` and joins the local `job-tracker-local` room.
+- `Start recording` explicitly enables the browser microphone. The frontend does not auto-start audio when the room connects.
+- `Stop recording` explicitly disables the microphone, waits a short local drain delay, then publishes a reliable `utterance_end` packet targeted only to `job-tracker-local-agent`.
+- The panel listens for `final_transcript` and `transcription_error` packets from the local LiveKit agent and renders them in the voice UI.
+- `Disconnect voice` tears down the room cleanly and preserves the latest displayed transcript.
+- Voice remains optional. Typed transcript commands and manual tracker edits stay usable even if LiveKit, the agent, or Whisper are unavailable.
+- Voice transcripts are display-only in this PR. They are not copied into the typed transcript textarea and are not auto-submitted to `POST /api/chat`.
+- Automatic utterance detection with VAD is intentionally deferred.
 
 Supported transcript examples:
 
@@ -128,7 +140,8 @@ The popup is not a generic extra confirmation step. It appears only when the bac
 - Audio references are not captured by the current frontend flow.
 - Read/delete transcript tools have not been added yet.
 - Regex parsing remains removed.
-- LiveKit has still not been added.
+- Voice transcripts are not auto-submitted anywhere in the UI.
+- VAD, silence detection, and partial transcripts are not implemented yet.
 
 ## Manual Validation
 
@@ -143,6 +156,12 @@ The popup is not a generic extra confirmation step. It appears only when the bac
 [ ] Search works
 [ ] Filters work
 [ ] Cancel modal works
+[ ] Connect voice joins the local LiveKit room without starting the microphone
+[ ] Start recording requests microphone access only after explicit click
+[ ] Stop recording publishes `utterance_end` and the UI switches to Processing transcript
+[ ] A `final_transcript` packet appears in the Latest voice transcript panel
+[ ] A `transcription_error` packet appears as a safe voice error without breaking typed flows
+[ ] Disconnect voice tears down the room cleanly and keeps the latest displayed transcript
 [ ] Transcript parses into an editable preview
 [ ] `I have a requirement. I want to add an application neilsoft` patches only the Company field
 [ ] Active draft keeps company and other untouched fields across multiple transcript turns
@@ -171,4 +190,4 @@ The popup is not a generic extra confirmation step. It appears only when the bac
 
 ## Scope
 
-This frontend contains the Phase 1 tracker table, add/edit form, delete confirmation, search, filters, the Phase 2 captured URL integration, and the Phase 3 semantic transcript draft workflow. It does not include LiveKit, voice recording, speech-to-text in the browser, CSV import/export, reminders, analytics, timelines, event sourcing, scraping, or automatic workflow inference.
+This frontend contains the Phase 1 tracker table, add/edit form, delete confirmation, search, filters, the Phase 2 captured URL integration, the semantic transcript draft workflow, and the PR 3 manual LiveKit microphone transport panel. It still does not include automatic voice submission into the typed transcript flow, browser-side speech-to-text, CSV import/export, reminders, analytics, timelines, event sourcing, scraping, VAD, or automatic workflow inference.

@@ -5,6 +5,7 @@
     "build": "next build"
   },
   "dependencies": {
+    "livekit-client": "^2.19.1",
     "next": "^16.2.7",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { DataPacket_Kind, Participant, Room, RoomEvent } from "livekit-client";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActiveDraftState,
   ApplicationFormState,
@@ -34,6 +35,8 @@ const LOCATION_OPTIONS = ["remote", "hybrid", "onsite"] as const;
 const STAGE_OPTIONS = ["Tailored", "Applied", "Networked", "Engaged", "COLD_MAIL", "Followed up"] as const;
 const PRIORITY_OPTIONS = ["LOW", "MEDIUM", "HIGH"] as const;
 const STATUS_OPTIONS = ["Interested", "Applied", "Rejected", "Interview", "Offer", "Archived"] as const;
+const VOICE_AGENT_IDENTITY = "job-tracker-local-agent";
+const UTTERANCE_END_DRAIN_MS = 200;
 
 type BrowserContext = {
   id: number;
@@ -44,6 +47,27 @@ type BrowserContext = {
 
 type BrowserContextStatus = "idle" | "loading" | "loaded" | "error";
 type TranscriptStatus = "idle" | "parsing" | "draft-ready" | "saving" | "saved" | "error";
+type VoiceStatus = "disconnected" | "connecting" | "connected" | "recording" | "processing";
+
+type LiveKitTokenResponse = {
+  url: string;
+  room_name: string;
+  participant_identity: string;
+  access_token: string;
+  expires_at: string;
+};
+
+type AgentPacket =
+  | {
+      type: "final_transcript";
+      utterance_id: string;
+      text: string;
+    }
+  | {
+      type: "transcription_error";
+      utterance_id: string;
+      message: string;
+    };
 
 type SemanticFieldPatch = {
   company?: string | null;
@@ -261,6 +285,138 @@ function mergeDraftWithExplicitPatch(currentDraft: ApplicationFormState | null, 
   }
 
   return nextDraft;
+}
+
+function safeTrimmedString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseLiveKitTokenResponse(value: unknown): LiveKitTokenResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("The voice token response was invalid.");
+  }
+
+  const candidate = value as Partial<LiveKitTokenResponse>;
+  const url = safeTrimmedString(candidate.url);
+  const roomName = safeTrimmedString(candidate.room_name);
+  const participantIdentity = safeTrimmedString(candidate.participant_identity);
+  const accessToken = safeTrimmedString(candidate.access_token);
+  const expiresAt = safeTrimmedString(candidate.expires_at);
+
+  if (!url || !roomName || !participantIdentity || !accessToken || !expiresAt) {
+    throw new Error("The voice token response was missing required fields.");
+  }
+
+  return {
+    url,
+    room_name: roomName,
+    participant_identity: participantIdentity,
+    access_token: accessToken,
+    expires_at: expiresAt,
+  };
+}
+
+function parseAgentPacket(payload: Uint8Array, participantIdentity: string | null, activeUtteranceId: string | null): AgentPacket | null {
+  if (participantIdentity !== VOICE_AGENT_IDENTITY || !activeUtteranceId) {
+    return null;
+  }
+
+  let decodedPayload = "";
+  try {
+    decodedPayload = new TextDecoder("utf-8", { fatal: true }).decode(payload);
+  } catch {
+    return null;
+  }
+
+  let parsedValue: unknown;
+  try {
+    parsedValue = JSON.parse(decodedPayload);
+  } catch {
+    return null;
+  }
+
+  if (!parsedValue || typeof parsedValue !== "object" || Array.isArray(parsedValue)) {
+    return null;
+  }
+
+  const packet = parsedValue as Record<string, unknown>;
+  const type = safeTrimmedString(packet.type);
+  const utteranceId = safeTrimmedString(packet.utterance_id);
+  if (!utteranceId || utteranceId !== activeUtteranceId) {
+    return null;
+  }
+
+  if (type === "final_transcript") {
+    const text = safeTrimmedString(packet.text);
+    return text ? { type, utterance_id: utteranceId, text } : null;
+  }
+
+  if (type === "transcription_error") {
+    const message = safeTrimmedString(packet.message);
+    return message ? { type, utterance_id: utteranceId, message } : null;
+  }
+
+  return null;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function voiceStatusLabel(status: VoiceStatus) {
+  switch (status) {
+    case "connecting":
+      return "Connecting";
+    case "connected":
+      return "Connected";
+    case "recording":
+      return "Recording";
+    case "processing":
+      return "Processing transcript";
+    default:
+      return "Disconnected";
+  }
+}
+
+function toVoiceConnectErrorMessage(caught: unknown) {
+  if (caught instanceof Error && caught.message) {
+    return `Voice connect failed: ${caught.message}`;
+  }
+
+  return "Voice connect failed. Check that the backend and LiveKit server are running.";
+}
+
+function toMicrophoneStartErrorMessage(caught: unknown) {
+  if (caught instanceof DOMException) {
+    if (caught.name === "NotAllowedError") {
+      return "Microphone access was denied. Allow microphone access in the browser and try again.";
+    }
+    if (caught.name === "NotFoundError") {
+      return "No microphone was found. Connect a microphone and try again.";
+    }
+  }
+
+  if (caught instanceof Error && caught.message) {
+    return `Microphone start failed: ${caught.message}`;
+  }
+
+  return "Microphone start failed. Check microphone permissions and try again.";
+}
+
+function toMicrophoneStopErrorMessage(caught: unknown) {
+  if (caught instanceof Error && caught.message) {
+    return `Microphone stop failed: ${caught.message}`;
+  }
+
+  return "Microphone stop failed. Try disconnecting and reconnecting voice.";
+}
+
+function toVoicePublishErrorMessage(caught: unknown) {
+  if (caught instanceof Error && caught.message) {
+    return `Unable to submit the recorded audio: ${caught.message}`;
+  }
+
+  return "Unable to submit the recorded audio. Try recording again.";
 }
 
 async function requestJson<T>(path: string, options: RequestInit = {}) {
@@ -532,6 +688,13 @@ function ApplicationForm({
 }
 
 export default function Home() {
+  const roomRef = useRef<Room | null>(null);
+  const roomEventHandlersRef = useRef<{
+    dataReceived: (payload: Uint8Array, participant?: Participant, kind?: DataPacket_Kind) => void;
+    disconnected: () => void;
+  } | null>(null);
+  const activeUtteranceIdRef = useRef<string | null>(null);
+  const intentionalDisconnectRef = useRef(false);
   const [records, setRecords] = useState<ApplicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -562,6 +725,9 @@ export default function Home() {
   const [showDraftDiscardModal, setShowDraftDiscardModal] = useState(false);
   const [pendingCompanyConfirmation, setPendingCompanyConfirmation] = useState<PendingCompanyConfirmation | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("disconnected");
+  const [voiceError, setVoiceError] = useState("");
+  const [latestVoiceTranscript, setLatestVoiceTranscript] = useState("");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({
     role: "",
@@ -692,6 +858,179 @@ export default function Home() {
       ...currentValue,
       job_link: browserContext.url,
     }));
+  }
+
+  function detachRoomEventHandlers(room: Room) {
+    if (!roomEventHandlersRef.current) {
+      return;
+    }
+
+    room.off(RoomEvent.DataReceived, roomEventHandlersRef.current.dataReceived);
+    room.off(RoomEvent.Disconnected, roomEventHandlersRef.current.disconnected);
+    roomEventHandlersRef.current = null;
+  }
+
+  const disconnectVoice = useCallback(
+    async ({ preserveError = false } = {}) => {
+      intentionalDisconnectRef.current = true;
+      activeUtteranceIdRef.current = null;
+
+      const room = roomRef.current;
+      roomRef.current = null;
+
+      if (room) {
+        try {
+          if (room.localParticipant.isMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(false);
+          }
+        } catch {
+          // Disconnect continues even if the local microphone could not be muted cleanly.
+        }
+
+        detachRoomEventHandlers(room);
+        room.disconnect();
+      }
+
+      setVoiceStatus("disconnected");
+      if (!preserveError) {
+        setVoiceError("");
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      void disconnectVoice({ preserveError: true });
+    };
+  }, [disconnectVoice]);
+
+  async function connectVoice() {
+    if (voiceStatus !== "disconnected") {
+      return;
+    }
+
+    setVoiceError("");
+    setVoiceStatus("connecting");
+
+    const room = new Room();
+    const handleDataReceived = (payload: Uint8Array, participant?: Participant) => {
+      const packet = parseAgentPacket(payload, participant?.identity ?? null, activeUtteranceIdRef.current);
+      if (!packet) {
+        return;
+      }
+
+      activeUtteranceIdRef.current = null;
+      if (packet.type === "final_transcript") {
+        setLatestVoiceTranscript(packet.text);
+        setVoiceError("");
+      } else {
+        setVoiceError(packet.message);
+      }
+      setVoiceStatus("connected");
+    };
+    const handleDisconnected = () => {
+      detachRoomEventHandlers(room);
+      roomRef.current = null;
+      activeUtteranceIdRef.current = null;
+      setVoiceStatus("disconnected");
+      if (!intentionalDisconnectRef.current) {
+        setVoiceError("Voice disconnected unexpectedly. Reconnect voice to continue.");
+      }
+      intentionalDisconnectRef.current = false;
+    };
+
+    room.on(RoomEvent.DataReceived, handleDataReceived);
+    room.on(RoomEvent.Disconnected, handleDisconnected);
+    roomEventHandlersRef.current = {
+      dataReceived: handleDataReceived,
+      disconnected: handleDisconnected,
+    };
+
+    try {
+      const tokenResponse = await requestJson<unknown>("/livekit/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const token = parseLiveKitTokenResponse(tokenResponse);
+      intentionalDisconnectRef.current = false;
+      await room.connect(token.url, token.access_token);
+      roomRef.current = room;
+      setVoiceStatus("connected");
+    } catch (caught) {
+      detachRoomEventHandlers(room);
+      room.disconnect();
+      setVoiceStatus("disconnected");
+      setVoiceError(toVoiceConnectErrorMessage(caught));
+    }
+  }
+
+  async function startVoiceRecording() {
+    if (voiceStatus !== "connected" || !roomRef.current) {
+      return;
+    }
+
+    setVoiceError("");
+    const utteranceId = crypto.randomUUID();
+    try {
+      await roomRef.current.localParticipant.publishData(
+        new TextEncoder().encode(
+          JSON.stringify({
+            type: "utterance_start",
+            utterance_id: utteranceId,
+          }),
+        ),
+        {
+          reliable: true,
+          destinationIdentities: [VOICE_AGENT_IDENTITY],
+        },
+      );
+      await roomRef.current.localParticipant.setMicrophoneEnabled(true);
+      activeUtteranceIdRef.current = utteranceId;
+      setVoiceStatus("recording");
+    } catch (caught) {
+      activeUtteranceIdRef.current = null;
+      setVoiceStatus("connected");
+      setVoiceError(toMicrophoneStartErrorMessage(caught));
+    }
+  }
+
+  async function stopVoiceRecording() {
+    const room = roomRef.current;
+    const activeUtteranceId = activeUtteranceIdRef.current;
+    if (!room || voiceStatus !== "recording" || !activeUtteranceId) {
+      return;
+    }
+
+    setVoiceError("");
+    try {
+      await room.localParticipant.setMicrophoneEnabled(false);
+    } catch (caught) {
+      setVoiceError(toMicrophoneStopErrorMessage(caught));
+      return;
+    }
+
+    try {
+      await delay(UTTERANCE_END_DRAIN_MS);
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(
+          JSON.stringify({
+            type: "utterance_end",
+            utterance_id: activeUtteranceId,
+          }),
+        ),
+        {
+          reliable: true,
+          destinationIdentities: [VOICE_AGENT_IDENTITY],
+        },
+      );
+      setVoiceStatus("processing");
+    } catch (caught) {
+      activeUtteranceIdRef.current = null;
+      setVoiceStatus("connected");
+      setVoiceError(toVoicePublishErrorMessage(caught));
+    }
   }
 
   function buildTranscriptRequestContext(): TranscriptContext {
@@ -981,6 +1320,11 @@ export default function Home() {
     }
   }
 
+  const canConnectVoice = voiceStatus === "disconnected";
+  const canStartVoiceRecording = voiceStatus === "connected";
+  const canStopVoiceRecording = voiceStatus === "recording";
+  const canDisconnectVoice = voiceStatus === "connected" || voiceStatus === "recording" || voiceStatus === "processing";
+
   return (
     <main className="pageShell">
       <header className="topBar">
@@ -1007,6 +1351,38 @@ export default function Home() {
         browserContextError={browserContextError}
         onUseCapturedUrl={useCapturedUrl}
       />
+
+      <section className="formPanel voicePanel">
+        <div className="formHeader">
+          <h2>Voice Input</h2>
+        </div>
+
+        <p className="voiceStatusText">
+          Status: <strong>{voiceStatusLabel(voiceStatus)}</strong>
+        </p>
+        {voiceStatus === "processing" ? (
+          <p className="stateText">Waiting for the local LiveKit agent to return the final transcript.</p>
+        ) : null}
+        <div className="voiceActions">
+          <button className="primaryButton" disabled={!canConnectVoice} type="button" onClick={connectVoice}>
+            Connect voice
+          </button>
+          <button className="primaryButton" disabled={!canStartVoiceRecording} type="button" onClick={startVoiceRecording}>
+            Start recording
+          </button>
+          <button className="secondaryButton" disabled={!canStopVoiceRecording} type="button" onClick={stopVoiceRecording}>
+            Stop recording
+          </button>
+          <button className="secondaryButton" disabled={!canDisconnectVoice} type="button" onClick={() => void disconnectVoice()}>
+            Disconnect voice
+          </button>
+        </div>
+        <div className="voiceTranscriptBox">
+          <span>Latest voice transcript</span>
+          <p>{latestVoiceTranscript || "No voice transcript yet."}</p>
+        </div>
+        {voiceError ? <p className="errorText">Voice error: {voiceError}</p> : null}
+      </section>
 
       <section className="formPanel transcriptPanel">
         <div className="formHeader">
