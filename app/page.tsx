@@ -728,6 +728,8 @@ export default function Home() {
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("disconnected");
   const [voiceError, setVoiceError] = useState("");
   const [latestVoiceTranscript, setLatestVoiceTranscript] = useState("");
+  const [showVoiceTranscriptOverwriteConfirm, setShowVoiceTranscriptOverwriteConfirm] = useState(false);
+  const [voiceTranscriptCopyMessage, setVoiceTranscriptCopyMessage] = useState("");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({
     role: "",
@@ -1033,6 +1035,26 @@ export default function Home() {
     }
   }
 
+  function copyLatestVoiceTranscriptToCommand() {
+    setTranscript(latestVoiceTranscript);
+    setShowVoiceTranscriptOverwriteConfirm(false);
+    setVoiceTranscriptCopyMessage("Voice transcript copied to Transcript Command. Review it before submitting.");
+  }
+
+  function useLatestVoiceTranscript() {
+    if (!latestVoiceTranscript.trim() || voiceStatus === "processing") {
+      return;
+    }
+
+    if (transcript.trim()) {
+      setShowVoiceTranscriptOverwriteConfirm(true);
+      setVoiceTranscriptCopyMessage("");
+      return;
+    }
+
+    copyLatestVoiceTranscriptToCommand();
+  }
+
   function buildTranscriptRequestContext(): TranscriptContext {
     if (draftValue) {
       return {
@@ -1324,6 +1346,7 @@ export default function Home() {
   const canStartVoiceRecording = voiceStatus === "connected";
   const canStopVoiceRecording = voiceStatus === "recording";
   const canDisconnectVoice = voiceStatus === "connected" || voiceStatus === "recording" || voiceStatus === "processing";
+  const canUseVoiceTranscript = Boolean(latestVoiceTranscript.trim()) && voiceStatus !== "processing";
 
   return (
     <main className="pageShell">
@@ -1381,6 +1404,25 @@ export default function Home() {
           <span>Latest voice transcript</span>
           <p>{latestVoiceTranscript || "No voice transcript yet."}</p>
         </div>
+        <div className="voiceActions">
+          <button className="secondaryButton" disabled={!canUseVoiceTranscript} type="button" onClick={useLatestVoiceTranscript}>
+            Use transcript
+          </button>
+          {showVoiceTranscriptOverwriteConfirm ? (
+            <>
+              <button className="primaryButton" type="button" onClick={copyLatestVoiceTranscriptToCommand}>
+                Confirm overwrite
+              </button>
+              <button className="secondaryButton" type="button" onClick={() => setShowVoiceTranscriptOverwriteConfirm(false)}>
+                Keep current text
+              </button>
+            </>
+          ) : null}
+        </div>
+        {showVoiceTranscriptOverwriteConfirm ? (
+          <p className="stateText">Transcript Command already contains text. Confirm before replacing it with the latest voice transcript.</p>
+        ) : null}
+        {voiceTranscriptCopyMessage ? <p className="successText">{voiceTranscriptCopyMessage}</p> : null}
         {voiceError ? <p className="errorText">Voice error: {voiceError}</p> : null}
       </section>
 
@@ -1405,7 +1447,11 @@ export default function Home() {
             className="transcriptInput"
             placeholder="Neilsoft sathi application add kar. GENAI Engineer only, fulltime ani onsite. Applied stage thev."
             value={transcript}
-            onChange={(event) => setTranscript(event.target.value)}
+            onChange={(event) => {
+              setTranscript(event.target.value);
+              setShowVoiceTranscriptOverwriteConfirm(false);
+              setVoiceTranscriptCopyMessage("");
+            }}
           />
         </label>
         <div className="formActions">

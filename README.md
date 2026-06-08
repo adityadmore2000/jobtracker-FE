@@ -82,9 +82,12 @@ The frontend now includes a compact manual LiveKit voice transport panel near th
 - `Start recording` explicitly enables the browser microphone. The frontend does not auto-start audio when the room connects.
 - `Stop recording` explicitly disables the microphone, waits a short local drain delay, then publishes a reliable `utterance_end` packet targeted only to `job-tracker-local-agent`.
 - The panel listens for `final_transcript` and `transcription_error` packets from the local LiveKit agent and renders them in the voice UI.
+- `Use transcript` copies the latest reviewed voice transcript into the existing `Transcript Command` textarea.
+- If the textarea already contains unsent text, the UI asks for explicit overwrite confirmation before replacing it.
 - `Disconnect voice` tears down the room cleanly and preserves the latest displayed transcript.
 - Voice remains optional. Typed transcript commands and manual tracker edits stay usable even if LiveKit, the agent, or Whisper are unavailable.
-- Voice transcripts are display-only in this PR. They are not copied into the typed transcript textarea and are not auto-submitted to `POST /api/chat`.
+- Voice transcripts are never auto-submitted. The validated existing `Transcript Command` flow remains the only `POST /api/chat` submission path.
+- After using `Use transcript`, the user still reviews or edits the textarea and then explicitly submits with the existing typed command action.
 - Automatic utterance detection with VAD is intentionally deferred.
 
 Supported transcript examples:
@@ -160,6 +163,9 @@ The popup is not a generic extra confirmation step. It appears only when the bac
 [ ] Start recording requests microphone access only after explicit click
 [ ] Stop recording publishes `utterance_end` and the UI switches to Processing transcript
 [ ] A `final_transcript` packet appears in the Latest voice transcript panel
+[ ] Clicking `Use transcript` copies the latest voice transcript into the existing Transcript Command textarea
+[ ] Clicking `Use transcript` does not call the backend by itself
+[ ] Existing textarea text requires explicit overwrite confirmation before replacement
 [ ] A `transcription_error` packet appears as a safe voice error without breaking typed flows
 [ ] Disconnect voice tears down the room cleanly and keeps the latest displayed transcript
 [ ] Transcript parses into an editable preview
@@ -190,4 +196,4 @@ The popup is not a generic extra confirmation step. It appears only when the bac
 
 ## Scope
 
-This frontend contains the Phase 1 tracker table, add/edit form, delete confirmation, search, filters, the Phase 2 captured URL integration, the semantic transcript draft workflow, and the PR 3 manual LiveKit microphone transport panel. It still does not include automatic voice submission into the typed transcript flow, browser-side speech-to-text, CSV import/export, reminders, analytics, timelines, event sourcing, scraping, VAD, or automatic workflow inference.
+This frontend contains the Phase 1 tracker table, add/edit form, delete confirmation, search, filters, the Phase 2 captured URL integration, the semantic transcript draft workflow, the PR 3 manual LiveKit microphone transport panel, and the PR 4 reviewed `Use transcript` handoff into the existing typed command textarea. It still does not include automatic voice submission into the typed transcript flow, browser-side speech-to-text, CSV import/export, reminders, analytics, timelines, event sourcing, scraping, VAD, or automatic workflow inference.
