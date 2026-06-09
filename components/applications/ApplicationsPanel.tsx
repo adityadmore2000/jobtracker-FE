@@ -5,6 +5,7 @@ import type { Application } from "@/lib/types";
 import { fetchApplications, fetchArchivedApplications } from "@/lib/api";
 import { useSelection } from "@/lib/SelectionContext";
 import ApplicationsTable from "./ApplicationsTable";
+import DetailPanel from "@/components/detail/DetailPanel";
 
 export type ApplicationsPanelHandle = {
   refresh: () => void;
@@ -54,19 +55,41 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
       void refresh();
     }, [refresh]);
 
+    const selectedApplication =
+      [...applications, ...archived].find(
+        (application) => application.id === selectedApplicationId
+      ) ?? null;
+
+    const selectedApplicationIsArchived =
+      selectedApplication?.archived_at != null ||
+      archived.some((application) => application.id === selectedApplicationId);
+
+    const handleDetailMutation = useCallback(async () => {
+      await refresh();
+      setSelectedApplicationId(null);
+    }, [refresh, setSelectedApplicationId]);
+
     return (
-      <div className="flex h-full flex-col overflow-hidden">
-        <ApplicationsTable
-          applications={applications}
-          archived={archived}
-          activeDraft={activeDraft}
-          activeTab={activeTab}
-          loading={loading}
-          error={error}
-          selectedApplicationId={selectedApplicationId}
-          onActiveTabChange={setActiveTab}
-          onSelectApplication={setSelectedApplicationId}
-          onRetry={() => void refresh()}
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <ApplicationsTable
+            applications={applications}
+            archived={archived}
+            activeDraft={activeDraft}
+            activeTab={activeTab}
+            loading={loading}
+            error={error}
+            selectedApplicationId={selectedApplicationId}
+            onActiveTabChange={setActiveTab}
+            onSelectApplication={setSelectedApplicationId}
+            onRetry={() => void refresh()}
+          />
+        </div>
+
+        <DetailPanel
+          application={selectedApplication}
+          isArchived={selectedApplicationIsArchived}
+          onApplicationMutated={handleDetailMutation}
         />
       </div>
     );
