@@ -1,0 +1,66 @@
+import { API_BASE_URL } from "@/app/config";
+import {
+  Application,
+  ApplicationNote,
+  TimelineEvent,
+  TranscriptContext,
+  TranscriptResponse,
+} from "./types";
+
+const BASE_URL = API_BASE_URL;
+
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchApplications(): Promise<Application[]> {
+  const res = await fetch(`${BASE_URL}/applications`);
+  return handleResponse(res);
+}
+
+export async function fetchArchivedApplications(): Promise<Application[]> {
+  const res = await fetch(`${BASE_URL}/applications/archived`);
+  return handleResponse(res);
+}
+
+export async function fetchNotes(applicationId: number): Promise<ApplicationNote[]> {
+  const res = await fetch(`${BASE_URL}/applications/${applicationId}/notes`);
+  const data = await handleResponse<{ notes: ApplicationNote[] }>(res);
+  return data.notes;
+}
+
+export async function fetchTimeline(applicationId: number): Promise<TimelineEvent[]> {
+  const res = await fetch(`${BASE_URL}/applications/${applicationId}/timeline`);
+  const data = await handleResponse<{ timeline: TimelineEvent[] }>(res);
+  return data.timeline;
+}
+
+export async function submitTranscript(
+  transcript: string,
+  context: TranscriptContext,
+): Promise<TranscriptResponse> {
+  const res = await fetch(`${BASE_URL}/transcript/parse`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transcript, context }),
+  });
+  return handleResponse(res);
+}
+
+export async function archiveApplication(applicationId: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/applications/${applicationId}/archive`, {
+    method: "POST",
+  });
+  return handleResponse(res);
+}
+
+export async function restoreApplication(applicationId: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/applications/${applicationId}/restore`, {
+    method: "POST",
+  });
+  return handleResponse(res);
+}
