@@ -5,12 +5,15 @@ type ApplicationsTableProps = {
   applications: Application[];
   archived: Application[];
   activeDraft: Partial<Application> | null;
+  draftId: string | null;
   activeTab: "active" | "archived";
   loading: boolean;
   error: string | null;
   selectedApplicationId: number | null;
+  selectedDraftId: string | null;
   onActiveTabChange: (tab: "active" | "archived") => void;
   onSelectApplication: (applicationId: number) => void;
+  onSelectDraft: (draftId: string) => void;
   onRetry: () => void;
 };
 
@@ -18,12 +21,15 @@ export default function ApplicationsTable({
   applications,
   archived,
   activeDraft,
+  draftId,
   activeTab,
   loading,
   error,
   selectedApplicationId,
+  selectedDraftId,
   onActiveTabChange,
   onSelectApplication,
+  onSelectDraft,
   onRetry,
 }: ApplicationsTableProps) {
   const activeCount = applications.length + (activeDraft ? 1 : 0);
@@ -77,7 +83,16 @@ export default function ApplicationsTable({
 
       return (
         <>
-          {hasDraft && (
+          {hasDraft && draftId && (
+            <ApplicationRow
+              application={activeDraft}
+              isDraft
+              draftId={draftId}
+              isSelected={selectedDraftId === draftId}
+              onSelectDraft={onSelectDraft}
+            />
+          )}
+          {hasDraft && !draftId && (
             <ApplicationRow application={activeDraft} isDraft />
           )}
           {applications.map((app) => (

@@ -10,6 +10,34 @@ import {
 
 const BASE_URL = API_BASE_URL;
 
+export type ApplicationUpdatePayload = {
+  company?: string;
+  roles_json?: string[];
+  employment_types_json?: string[];
+  job_link?: string;
+  location?: string;
+  status?: string;
+  current_stages_json?: string[];
+  priority?: string;
+  engaged_days?: number;
+  next_action?: string;
+  comments?: string;
+};
+
+export type DraftPatchPayload = {
+  company?: string;
+  roles?: string[];
+  employment_types?: string[];
+  job_link?: string;
+  location?: string;
+  status?: string;
+  current_stages?: string[];
+  priority?: string;
+  engaged_days?: number;
+  next_action?: string;
+  comments?: string;
+};
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = await res.text();
@@ -64,6 +92,40 @@ export async function restoreApplication(applicationId: number): Promise<void> {
     method: "POST",
   });
   return handleResponse(res);
+}
+
+export async function updateApplication(
+  applicationId: number,
+  payload: ApplicationUpdatePayload,
+): Promise<Application> {
+  const res = await fetch(`${BASE_URL}/applications/${applicationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Application>(res);
+}
+
+export async function patchDraft(draftId: string, payload: DraftPatchPayload): Promise<Application> {
+  const res = await fetch(`${BASE_URL}/drafts/${draftId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Application>(res);
+}
+
+export async function saveDraft(draftId: string): Promise<Application> {
+  const res = await fetch(`${BASE_URL}/drafts/${draftId}/save`, { method: "POST" });
+  return handleResponse<Application>(res);
+}
+
+export async function discardDraft(draftId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/drafts/${draftId}/discard`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `HTTP ${res.status}`);
+  }
 }
 
 export async function fetchLiveKitToken(roomName?: string): Promise<LiveKitTokenResponse> {

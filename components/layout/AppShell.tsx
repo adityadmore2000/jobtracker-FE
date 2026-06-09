@@ -37,6 +37,8 @@ export default function AppShell() {
             ref={applicationsPanelRef}
             activeDraft={activeDraft}
             draftId={draftId}
+            onActiveDraftChange={setActiveDraft}
+            onDraftIdChange={setDraftId}
           />
         </section>
       </main>

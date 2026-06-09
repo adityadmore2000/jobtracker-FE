@@ -7,7 +7,9 @@ type ApplicationRowProps = {
   application: Partial<Application>;
   isDraft?: boolean;
   isSelected?: boolean;
+  draftId?: string | null;
   onSelect?: (applicationId: number) => void;
+  onSelectDraft?: (draftId: string) => void;
 };
 
 function cell(value: string | undefined | null) {
@@ -23,13 +25,15 @@ export default function ApplicationRow({
   application,
   isDraft = false,
   isSelected = false,
+  draftId,
   onSelect,
+  onSelectDraft,
 }: ApplicationRowProps) {
   const rowBase = "border-b transition-colors";
 
   let rowClass: string;
   if (isDraft) {
-    rowClass = `${rowBase} bg-amber-50`;
+    rowClass = `${rowBase} bg-amber-50 ${isSelected ? "outline outline-2 outline-amber-400" : "hover:bg-amber-100"}`;
   } else if (isSelected) {
     rowClass = `${rowBase} bg-blue-50`;
   } else {
@@ -37,21 +41,25 @@ export default function ApplicationRow({
   }
 
   const handleClick = () => {
-    if (!isDraft && application.id !== undefined && onSelect) {
+    if (isDraft) {
+      if (draftId && onSelectDraft) {
+        onSelectDraft(draftId);
+      }
+    } else if (application.id !== undefined && onSelect) {
       onSelect(application.id);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>) => {
-    if (!isDraft && (e.key === "Enter" || e.key === " ")) {
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      if (application.id !== undefined && onSelect) {
-        onSelect(application.id);
-      }
+      handleClick();
     }
   };
 
-  const interactiveProps = !isDraft
+  const isClickable = isDraft ? Boolean(draftId && onSelectDraft) : Boolean(application.id !== undefined && onSelect);
+
+  const interactiveProps = isClickable
     ? {
         tabIndex: 0,
         onClick: handleClick,
@@ -67,11 +75,19 @@ export default function ApplicationRow({
       <td className="px-3 py-2 text-sm">
         <span className="flex items-center gap-1">
           {isDraft && (
-            <Pencil
-              size={12}
-              className="shrink-0 text-amber-600"
-              aria-label="draft"
-            />
+            <button
+              type="button"
+              className="shrink-0 text-amber-600 hover:text-amber-800 focus:outline-none"
+              aria-label="Edit draft"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (draftId && onSelectDraft) {
+                  onSelectDraft(draftId);
+                }
+              }}
+            >
+              <Pencil size={12} />
+            </button>
           )}
           {cell(application.company)}
         </span>
