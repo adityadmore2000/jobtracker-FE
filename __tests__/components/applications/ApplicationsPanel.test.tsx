@@ -20,13 +20,16 @@ const mockFetchArchivedApplications = vi.mocked(api.fetchArchivedApplications);
 const makeApp = (id: number, overrides?: Partial<Application>): Application => ({
   id,
   company: `Company ${id}`,
-  role: `Role ${id}`,
+  roles: [`Role ${id}`],
   status: "Applied",
   priority: "LOW",
-  location_mode: "remote",
+  location: "remote",
   job_link: "",
-  employment_type: "Full Time",
-  current_stage: "Applied",
+  employment_types: ["Full Time"],
+  current_stages: ["Applied"],
+  engaged_days: 0,
+  next_action: "",
+  comments: "",
   is_draft: false,
   draft_created_at: null,
   archived_at: null,
@@ -153,6 +156,7 @@ describe("ApplicationsPanel", () => {
     fireEvent.click(screen.getByText("Company 1").closest("tr")!);
 
     await waitFor(() =>
+      // DetailPanel renders: "Company 1 — Role 1" (first role from array)
       expect(screen.getByText("Company 1 — Role 1")).toBeInTheDocument()
     );
   });
@@ -162,12 +166,10 @@ describe("ApplicationsPanel", () => {
     mockFetchArchivedApplications.mockResolvedValue([archivedApp]);
     renderPanel();
 
-    // Wait for initial load to complete (loading state clears)
     await waitFor(() =>
       expect(screen.queryByText("Loading applications…")).not.toBeInTheDocument()
     );
 
-    // Switch to archived tab
     fireEvent.click(screen.getByText(/Archived/));
     await waitFor(() => screen.getByText("Archived Co"));
 
@@ -179,24 +181,21 @@ describe("ApplicationsPanel", () => {
   });
 
   it("draft row remains non-selectable", async () => {
-    const draft: Partial<Application> = { company: "Draft Co", role: "Draft Role" };
+    const draft: Partial<Application> = { company: "Draft Co", roles: ["Draft Role"] };
     renderPanel(draft);
     await waitFor(() => screen.getByText("Draft Co"));
 
     fireEvent.click(screen.getByText("Draft Co").closest("tr")!);
 
-    // Detail panel should still show empty state (not the draft row)
     expect(
       screen.getByText("Select an application to view details.")
     ).toBeInTheDocument();
   });
 
   it("after detail mutation callback, both endpoints refetch and selection clears", async () => {
-    // Mock fetchNotes and fetchTimeline so clicking a row won't cause issues
     renderPanel();
     await waitFor(() => screen.getByText("Company 1"));
 
-    // Select a row
     fireEvent.click(screen.getByText("Company 1").closest("tr")!);
     await waitFor(() =>
       expect(screen.getByText("Company 1 — Role 1")).toBeInTheDocument()
@@ -204,21 +203,11 @@ describe("ApplicationsPanel", () => {
 
     const callCountBefore = mockFetchApplications.mock.calls.length;
 
-    // Find the Archive button and simulate a mutation via the detail panel
-    // We simulate by getting the Archive button and triggering the dialog flow
-    // Since we need to test the callback chain, we check that after the dialog
-    // confirms, the refresh is called and selection is cleared.
-    // For isolation, directly verify the callback wiring by checking refresh call count
-    // increases and empty state returns after a manual refresh + selection clear.
-    // The full flow is covered in ArchiveButton tests.
-    // Here we verify the structural invariant: after refresh, empty state returns.
     await act(async () => {
-      // Simulate what handleDetailMutation does
       await mockFetchApplications();
       await mockFetchArchivedApplications();
     });
 
-    // Still verify the panel renders correctly after re-fetch
     await waitFor(() =>
       expect(mockFetchApplications.mock.calls.length).toBeGreaterThan(callCountBefore)
     );

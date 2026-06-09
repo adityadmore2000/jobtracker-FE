@@ -1,19 +1,6 @@
-export type ApplicationRecord = {
-  id: number;
-  company: string;
-  roles_json: string[];
-  employment_types_json: string[];
-  job_link: string;
-  location: string;
-  status: string;
-  current_stages_json: string[];
-  priority: string;
-  engaged_days: number;
-  next_action: string;
-  comments: string;
-  created_at: string;
-  updated_at: string;
-};
+import type { Application } from "@/lib/types";
+
+export type ApplicationRecord = Application;
 
 export type ApplicationFormState = Omit<ApplicationRecord, "id" | "created_at" | "updated_at">;
 
@@ -38,9 +25,9 @@ export function toggleMultiSelectValue(values: string[], value: string) {
 export function normalizeApplicationRecord(record: ApplicationRecord): ApplicationRecord {
   return {
     ...record,
-    roles_json: Array.isArray(record.roles_json) ? record.roles_json : [],
-    employment_types_json: Array.isArray(record.employment_types_json) ? record.employment_types_json : [],
-    current_stages_json: Array.isArray(record.current_stages_json) ? record.current_stages_json : [],
+    roles: Array.isArray(record.roles) ? record.roles : [],
+    employment_types: Array.isArray(record.employment_types) ? record.employment_types : [],
+    current_stages: Array.isArray(record.current_stages) ? record.current_stages : [],
     company: record.company ?? "",
     job_link: record.job_link ?? "",
     location: record.location ?? "",
@@ -66,12 +53,12 @@ export function upsertApplicationRecord(records: ApplicationRecord[], savedRecor
 export function toActiveDraftState(value: ApplicationFormState): ActiveDraftState {
   return {
     company: value.company,
-    roles: value.roles_json,
-    employment_types: value.employment_types_json,
+    roles: value.roles,
+    employment_types: value.employment_types,
     job_link: value.job_link,
     location: value.location,
     status: value.status,
-    current_stages: value.current_stages_json,
+    current_stages: value.current_stages,
     priority: value.priority,
     engaged_days: Number.isFinite(value.engaged_days) ? value.engaged_days : null,
     next_action: value.next_action,

@@ -27,7 +27,7 @@ export default function DetailPanel({
         <>
           <div className="flex shrink-0 items-center justify-between px-4 py-2">
             <span className="text-sm font-medium">
-              {application.company} — {application.role}
+              {application.company}{application.roles && application.roles.length > 0 ? ` — ${application.roles[0]}` : ""}
             </span>
             <ArchiveButton
               application={application}

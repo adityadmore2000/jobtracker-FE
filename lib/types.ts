@@ -1,25 +1,16 @@
-export type ApplicationStatus =
-  | "applied"
-  | "interviewing"
-  | "offered"
-  | "rejected"
-  | "ghosted"
-  | "withdrawn";
-
-export type ApplicationPriority = "low" | "medium" | "high";
-
-export type LocationMode = "remote" | "hybrid" | "onsite";
-
 export type Application = {
   id: number;
   company: string;
-  role: string;
-  status: string;
-  priority: string;
-  location_mode: string;
+  roles: string[];
+  employment_types: string[];
   job_link: string;
-  employment_type: string;
-  current_stage: string;
+  location: string;
+  status: string;
+  current_stages: string[];
+  priority: string;
+  engaged_days: number;
+  next_action: string;
+  comments: string;
   is_draft: boolean;
   draft_created_at: string | null;
   archived_at: string | null;
@@ -54,14 +45,25 @@ export type TranscriptContext = {
   recent_actions?: string[];
 };
 
+export type TranscriptStatus =
+  | "draft_created"
+  | "draft_updated"
+  | "saved"
+  | "discarded"
+  | "updated"
+  | "clarification"
+  | "no_change"
+  | "error";
+
 export type TranscriptResponse = {
-  status: string;
+  status: TranscriptStatus;
   message: string;
-  draft?: Partial<Application>;
-  draft_id?: string;
-  requires_confirmation?: boolean;
-  confirmation_kind?: string;
-  clarification_question?: string;
+  application_id: number | null;
+  draft_id: string | null;
+  draft: Application | null;
+  application?: Application | null;
+  warnings: string[];
+  clarification_question: string | null;
 };
 
 export type LiveKitTokenResponse = {

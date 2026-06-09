@@ -41,8 +41,25 @@ const defaultProps = {
   onApplicationMutated: vi.fn(),
 };
 
-function makeResponse(overrides: Partial<TranscriptResponse> = {}): TranscriptResponse {
-  return { status: "clarification", message: "Please clarify.", ...overrides };
+function makeResponse(overrides: {
+  status?: TranscriptResponse["status"];
+  message?: string;
+  application_id?: number | null;
+  draft_id?: string | null;
+  draft?: Application | null;
+  warnings?: string[];
+  clarification_question?: string | null;
+} = {}): TranscriptResponse {
+  return {
+    status: "clarification",
+    message: "Please clarify.",
+    application_id: null,
+    draft_id: null,
+    draft: null,
+    warnings: [],
+    clarification_question: null,
+    ...overrides,
+  };
 }
 
 function renderPanel(props = {}) {
@@ -79,7 +96,7 @@ describe("ChatPanel", () => {
 
   it("submit passes transcript, draft_id, active_draft, active_application_id, recent_actions", async () => {
     mockSubmit.mockResolvedValue(makeResponse());
-    const draft: Partial<Application> = { company: "Neilsoft", role: "AI Engineer" };
+    const draft: Partial<Application> = { company: "Neilsoft", roles: ["AI Engineer"] };
     renderPanel({ activeDraft: draft, draftId: "draft-123" });
     await act(async () => { await submitText("save the draft"); });
     expect(mockSubmit).toHaveBeenCalledWith(
@@ -96,8 +113,13 @@ describe("ChatPanel", () => {
   it("draft_created updates draft ID and active draft callbacks", async () => {
     const onDraftIdChange = vi.fn();
     const onActiveDraftChange = vi.fn();
-    const newDraft: Partial<Application> = { company: "Neilsoft", role: "AI Engineer" };
-    mockSubmit.mockResolvedValue(makeResponse({ status: "draft_created", draft: newDraft, draft_id: "new-id", message: "" }));
+    const newDraft: Partial<Application> = { company: "Neilsoft", roles: ["AI Engineer"] };
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_created",
+      draft: newDraft as Application,
+      draft_id: "new-id",
+      message: "Draft created. Review it and save when ready.",
+    }));
     renderPanel({ onDraftIdChange, onActiveDraftChange });
     await act(async () => { await submitText("Applied at Neilsoft"); });
     expect(onDraftIdChange).toHaveBeenCalledWith("new-id");
@@ -105,8 +127,13 @@ describe("ChatPanel", () => {
   });
 
   it("draft_created appends draft summary message", async () => {
-    const newDraft: Partial<Application> = { company: "Neilsoft", role: "AI Engineer" };
-    mockSubmit.mockResolvedValue(makeResponse({ status: "draft_created", draft: newDraft, draft_id: "id1", message: "" }));
+    const newDraft: Partial<Application> = { company: "Neilsoft", roles: ["AI Engineer"] };
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_created",
+      draft: newDraft as Application,
+      draft_id: "id1",
+      message: "Draft created. Review it and save when ready.",
+    }));
     renderPanel();
     await act(async () => { await submitText("Applied at Neilsoft"); });
     expect(screen.getByText(/Draft: Neilsoft/)).toBeTruthy();
@@ -114,7 +141,12 @@ describe("ChatPanel", () => {
 
   it("draft_created does not call table refresh", async () => {
     const onApplicationMutated = vi.fn();
-    mockSubmit.mockResolvedValue(makeResponse({ status: "draft_created", draft: {}, draft_id: "id", message: "" }));
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_created",
+      draft: null,
+      draft_id: "id",
+      message: "Draft created. Review it and save when ready.",
+    }));
     renderPanel({ onApplicationMutated });
     await act(async () => { await submitText("Applied at Neilsoft"); });
     expect(onApplicationMutated).not.toHaveBeenCalled();
@@ -123,8 +155,13 @@ describe("ChatPanel", () => {
   it("draft_updated updates draft callbacks", async () => {
     const onDraftIdChange = vi.fn();
     const onActiveDraftChange = vi.fn();
-    const updatedDraft: Partial<Application> = { company: "Updated Co", role: "ML Engineer" };
-    mockSubmit.mockResolvedValue(makeResponse({ status: "draft_updated", draft: updatedDraft, draft_id: "upd-id", message: "" }));
+    const updatedDraft: Partial<Application> = { company: "Updated Co", roles: ["ML Engineer"] };
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_updated",
+      draft: updatedDraft as Application,
+      draft_id: "upd-id",
+      message: "Draft updated.",
+    }));
     renderPanel({ onDraftIdChange, onActiveDraftChange });
     await act(async () => { await submitText("update draft"); });
     expect(onDraftIdChange).toHaveBeenCalledWith("upd-id");
@@ -133,7 +170,12 @@ describe("ChatPanel", () => {
 
   it("draft_updated does not call table refresh", async () => {
     const onApplicationMutated = vi.fn();
-    mockSubmit.mockResolvedValue(makeResponse({ status: "draft_updated", draft: {}, draft_id: "id", message: "" }));
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_updated",
+      draft: null,
+      draft_id: "id",
+      message: "Draft updated.",
+    }));
     renderPanel({ onApplicationMutated });
     await act(async () => { await submitText("update"); });
     expect(onApplicationMutated).not.toHaveBeenCalled();
@@ -142,7 +184,7 @@ describe("ChatPanel", () => {
   it("saved clears draft callbacks", async () => {
     const onDraftIdChange = vi.fn();
     const onActiveDraftChange = vi.fn();
-    mockSubmit.mockResolvedValue(makeResponse({ status: "saved", message: "Saved." }));
+    mockSubmit.mockResolvedValue(makeResponse({ status: "saved", message: "Application saved." }));
     renderPanel({ onDraftIdChange, onActiveDraftChange });
     await act(async () => { await submitText("save it"); });
     expect(onDraftIdChange).toHaveBeenCalledWith(null);
@@ -151,7 +193,7 @@ describe("ChatPanel", () => {
 
   it("saved calls table refresh", async () => {
     const onApplicationMutated = vi.fn();
-    mockSubmit.mockResolvedValue(makeResponse({ status: "saved", message: "Saved." }));
+    mockSubmit.mockResolvedValue(makeResponse({ status: "saved", message: "Application saved." }));
     renderPanel({ onApplicationMutated });
     await act(async () => { await submitText("save it"); });
     expect(onApplicationMutated).toHaveBeenCalled();
@@ -160,7 +202,7 @@ describe("ChatPanel", () => {
   it("discarded clears draft callbacks", async () => {
     const onDraftIdChange = vi.fn();
     const onActiveDraftChange = vi.fn();
-    mockSubmit.mockResolvedValue(makeResponse({ status: "discarded", message: "Discarded." }));
+    mockSubmit.mockResolvedValue(makeResponse({ status: "discarded", message: "Draft discarded." }));
     renderPanel({ onDraftIdChange, onActiveDraftChange });
     await act(async () => { await submitText("discard"); });
     expect(onDraftIdChange).toHaveBeenCalledWith(null);
@@ -169,7 +211,7 @@ describe("ChatPanel", () => {
 
   it("discarded calls table refresh", async () => {
     const onApplicationMutated = vi.fn();
-    mockSubmit.mockResolvedValue(makeResponse({ status: "discarded", message: "Discarded." }));
+    mockSubmit.mockResolvedValue(makeResponse({ status: "discarded", message: "Draft discarded." }));
     renderPanel({ onApplicationMutated });
     await act(async () => { await submitText("discard"); });
     expect(onApplicationMutated).toHaveBeenCalled();
@@ -177,14 +219,18 @@ describe("ChatPanel", () => {
 
   it("updated calls table refresh", async () => {
     const onApplicationMutated = vi.fn();
-    mockSubmit.mockResolvedValue(makeResponse({ status: "updated", message: "Updated." }));
+    mockSubmit.mockResolvedValue(makeResponse({ status: "updated", message: "Application updated." }));
     renderPanel({ onApplicationMutated });
     await act(async () => { await submitText("update status"); });
     expect(onApplicationMutated).toHaveBeenCalled();
   });
 
   it("clarification appends clarification question", async () => {
-    mockSubmit.mockResolvedValue(makeResponse({ status: "clarification", message: "", clarification_question: "Which company?" }));
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "clarification",
+      message: "",
+      clarification_question: "Which company?",
+    }));
     renderPanel();
     await act(async () => { await submitText("something vague"); });
     expect(screen.getByText("Which company?")).toBeTruthy();
@@ -198,11 +244,18 @@ describe("ChatPanel", () => {
     expect(onApplicationMutated).not.toHaveBeenCalled();
   });
 
-  it("unknown status appends fallback message", async () => {
-    mockSubmit.mockResolvedValue(makeResponse({ status: "unknown_status", message: "Some fallback." }));
+  it("no_change displays backend message", async () => {
+    mockSubmit.mockResolvedValue(makeResponse({ status: "no_change", message: "No change was made." }));
+    renderPanel();
+    await act(async () => { await submitText("something unclear"); });
+    expect(screen.getByText("No change was made.")).toBeTruthy();
+  });
+
+  it("error displays backend message", async () => {
+    mockSubmit.mockResolvedValue(makeResponse({ status: "error", message: "An error occurred." }));
     renderPanel();
     await act(async () => { await submitText("something"); });
-    expect(screen.getByText("Some fallback.")).toBeTruthy();
+    expect(screen.getByText("An error occurred.")).toBeTruthy();
   });
 
   it("API rejection appends readable error message", async () => {
@@ -242,15 +295,28 @@ describe("ChatPanel", () => {
   it("voice auto-submit routes through the same handleSubmit pathway", async () => {
     mockSubmit.mockResolvedValue(makeResponse());
     renderPanel();
-    // Click the mock mic button which triggers onFinalTranscript("voice text")
-    // This should call onStartCountdown which in ChatPanel starts the countdown
-    // and eventually calls handleSubmit — but to avoid fake timers, we check
-    // that onValueChange was called with the transcript (voice text fills textarea).
-    // The countdown auto-submit eventually calls submitTranscript the same way.
     await act(async () => {
       fireEvent.click(screen.getByTestId("mic-button"));
     });
-    // The textarea should now show "voice text" (the panel sets inputText)
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("voice text");
+  });
+
+  it("draft_created pinned draft row becomes renderable", async () => {
+    const onActiveDraftChange = vi.fn();
+    const onDraftIdChange = vi.fn();
+    const newDraft: Partial<Application> = {
+      company: "Neilsoft",
+      roles: ["AI Engineer"],
+    };
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_created",
+      draft: newDraft as Application,
+      draft_id: "42",
+      message: "Draft created. Review it and save when ready.",
+    }));
+    renderPanel({ onActiveDraftChange, onDraftIdChange });
+    await act(async () => { await submitText("Applied for AI Engineer at Neilsoft"); });
+    expect(onActiveDraftChange).toHaveBeenCalledWith(newDraft);
+    expect(onDraftIdChange).toHaveBeenCalledWith("42");
   });
 });

@@ -6,13 +6,16 @@ import type { Application } from "@/lib/types";
 const savedApp: Application = {
   id: 1,
   company: "Acme Corp",
-  role: "ML Engineer",
+  roles: ["ML Engineer"],
   status: "Applied",
   priority: "HIGH",
-  location_mode: "remote",
+  location: "remote",
   job_link: "",
-  employment_type: "Full Time",
-  current_stage: "Applied",
+  employment_types: ["Full Time"],
+  current_stages: ["Applied"],
+  engaged_days: 0,
+  next_action: "",
+  comments: "",
   is_draft: false,
   draft_created_at: null,
   archived_at: null,
@@ -22,7 +25,7 @@ const savedApp: Application = {
 
 const draftApp: Partial<Application> = {
   company: "Draft Co",
-  role: "AI Engineer",
+  roles: ["AI Engineer"],
 };
 
 describe("ApplicationRow", () => {
@@ -34,7 +37,6 @@ describe("ApplicationRow", () => {
 
   it("renders the saved application status badge", () => {
     render(<table><tbody><ApplicationRow application={savedApp} /></tbody></table>);
-    // The status badge is a <span> with the rounded-full class
     const badges = screen.getAllByText("Applied");
     const statusBadge = badges.find((el) => el.tagName === "SPAN");
     expect(statusBadge).toBeInTheDocument();
@@ -106,5 +108,32 @@ describe("ApplicationRow", () => {
     );
     const row = screen.getByText("Acme Corp").closest("tr")!;
     expect(row.className).toContain("bg-blue-50");
+  });
+
+  it("renders multiple roles as comma-separated text", () => {
+    const multiRoleApp: Partial<Application> = {
+      company: "MultiCo",
+      roles: ["AI Engineer", "RAG Engineer"],
+    };
+    render(<table><tbody><ApplicationRow application={multiRoleApp} isDraft /></tbody></table>);
+    expect(screen.getByText("AI Engineer, RAG Engineer")).toBeInTheDocument();
+  });
+
+  it("renders multiple employment_types as comma-separated text", () => {
+    const multiTypeApp: Application = {
+      ...savedApp,
+      employment_types: ["Full Time", "Part Time"],
+    };
+    render(<table><tbody><ApplicationRow application={multiTypeApp} /></tbody></table>);
+    expect(screen.getByText("Full Time, Part Time")).toBeInTheDocument();
+  });
+
+  it("renders multiple current_stages as comma-separated text", () => {
+    const multiStageApp: Application = {
+      ...savedApp,
+      current_stages: ["Tailored", "Applied"],
+    };
+    render(<table><tbody><ApplicationRow application={multiStageApp} /></tbody></table>);
+    expect(screen.getByText("Tailored, Applied")).toBeInTheDocument();
   });
 });

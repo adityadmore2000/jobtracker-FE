@@ -14,6 +14,11 @@ function cell(value: string | undefined | null) {
   return value?.trim() || "—";
 }
 
+function renderArray(values: string[] | undefined | null): string {
+  if (!values || values.length === 0) return "—";
+  return values.join(", ");
+}
+
 export default function ApplicationRow({
   application,
   isDraft = false,
@@ -71,7 +76,7 @@ export default function ApplicationRow({
           {cell(application.company)}
         </span>
       </td>
-      <td className="px-3 py-2 text-sm">{cell(application.role)}</td>
+      <td className="px-3 py-2 text-sm">{renderArray(application.roles)}</td>
       <td className="px-3 py-2 text-sm">
         {displayStatus ? (
           <StatusBadge status={displayStatus} />
@@ -79,12 +84,12 @@ export default function ApplicationRow({
           "—"
         )}
       </td>
-      <td className="px-3 py-2 text-sm">{cell(application.current_stage)}</td>
+      <td className="px-3 py-2 text-sm">{renderArray(application.current_stages)}</td>
       <td className="px-3 py-2 text-sm">
         <PriorityBadge priority={application.priority} />
       </td>
-      <td className="px-3 py-2 text-sm">{cell(application.location_mode)}</td>
-      <td className="px-3 py-2 text-sm">{cell(application.employment_type)}</td>
+      <td className="px-3 py-2 text-sm">{cell(application.location)}</td>
+      <td className="px-3 py-2 text-sm">{renderArray(application.employment_types)}</td>
     </tr>
   );
 }

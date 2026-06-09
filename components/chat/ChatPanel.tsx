@@ -28,10 +28,11 @@ function makeMessage(role: ChatMessage["role"], text: string): ChatMessage {
 
 function buildDraftSummary(draft?: Partial<Application>): string {
   if (!draft) return "Draft active.";
+  const role = draft.roles && draft.roles.length > 0 ? draft.roles[0] : null;
   const parts = [
     draft.company,
-    draft.role,
-    draft.location_mode,
+    role,
+    draft.location,
     draft.priority ? `${draft.priority} priority` : null,
     draft.status,
   ].filter(Boolean);
@@ -64,16 +65,14 @@ export default function ChatPanel({
       onDraftIdChange(response.draft_id ?? draftId);
       onActiveDraftChange(response.draft ?? activeDraft);
       append(makeMessage("draft", buildDraftSummary(response.draft ?? activeDraft ?? undefined)));
-      if (response.message) {
-        append(makeMessage("system", response.message));
-      }
+      append(makeMessage("system", response.message));
       return;
     }
 
     if (status === "saved") {
       onDraftIdChange(null);
       onActiveDraftChange(null);
-      append(makeMessage("system", response.message || "Application saved."));
+      append(makeMessage("system", response.message));
       onApplicationMutated();
       return;
     }
@@ -81,13 +80,13 @@ export default function ChatPanel({
     if (status === "discarded") {
       onDraftIdChange(null);
       onActiveDraftChange(null);
-      append(makeMessage("system", response.message || "Draft discarded."));
+      append(makeMessage("system", response.message));
       onApplicationMutated();
       return;
     }
 
     if (status === "updated") {
-      append(makeMessage("system", response.message || "Application updated."));
+      append(makeMessage("system", response.message));
       onApplicationMutated();
       return;
     }
@@ -97,9 +96,9 @@ export default function ChatPanel({
       return;
     }
 
-    // fallback
+    // no_change or error: show backend message
     void text;
-    append(makeMessage("system", response.message || "Update received."));
+    append(makeMessage("system", response.message));
   }
 
   async function handleSubmit(text: string): Promise<void> {
