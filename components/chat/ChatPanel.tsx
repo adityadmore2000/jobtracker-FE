@@ -1,4 +1,11 @@
-import type { Application } from "@/lib/types";
+"use client";
+
+import { useState } from "react";
+import type { Application, ChatMessage, TranscriptContext, TranscriptResponse } from "@/lib/types";
+import { submitTranscript } from "@/lib/api";
+import { useSelection } from "@/lib/SelectionContext";
+import ChatFeed from "./ChatFeed";
+import ChatInput from "./ChatInput";
 
 type ChatPanelProps = {
   activeDraft: Partial<Application> | null;
@@ -8,6 +15,122 @@ type ChatPanelProps = {
   onApplicationMutated: () => void;
 };
 
-export default function ChatPanel(_props: ChatPanelProps) {
-  return null;
+function makeId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function makeMessage(role: ChatMessage["role"], text: string): ChatMessage {
+  return { id: makeId(), role, text, timestamp: new Date().toISOString() };
+}
+
+function buildDraftSummary(draft?: Partial<Application>): string {
+  if (!draft) return "Draft active.";
+  const parts = [
+    draft.company,
+    draft.role,
+    draft.location_mode,
+    draft.priority ? `${draft.priority} priority` : null,
+    draft.status,
+  ].filter(Boolean);
+  return `Draft: ${parts.join(" · ")}`;
+}
+
+export default function ChatPanel({
+  activeDraft,
+  draftId,
+  onActiveDraftChange,
+  onDraftIdChange,
+  onApplicationMutated,
+}: ChatPanelProps) {
+  const { selectedApplicationId } = useSelection();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [recentActions, setRecentActions] = useState<string[]>([]);
+
+  function append(...msgs: ChatMessage[]) {
+    setMessages((prev) => [...prev, ...msgs]);
+  }
+
+  function handleResponse(response: TranscriptResponse, text: string) {
+    const { status } = response;
+
+    if (status === "draft_created" || status === "draft_updated") {
+      onDraftIdChange(response.draft_id ?? draftId);
+      onActiveDraftChange(response.draft ?? activeDraft);
+      append(makeMessage("draft", buildDraftSummary(response.draft ?? activeDraft ?? undefined)));
+      if (response.message) {
+        append(makeMessage("system", response.message));
+      }
+      return;
+    }
+
+    if (status === "saved") {
+      onDraftIdChange(null);
+      onActiveDraftChange(null);
+      append(makeMessage("system", response.message || "Application saved."));
+      onApplicationMutated();
+      return;
+    }
+
+    if (status === "discarded") {
+      onDraftIdChange(null);
+      onActiveDraftChange(null);
+      append(makeMessage("system", response.message || "Draft discarded."));
+      onApplicationMutated();
+      return;
+    }
+
+    if (status === "updated") {
+      append(makeMessage("system", response.message || "Application updated."));
+      onApplicationMutated();
+      return;
+    }
+
+    if (status === "clarification") {
+      append(makeMessage("system", response.clarification_question || response.message));
+      return;
+    }
+
+    // fallback
+    void text;
+    append(makeMessage("system", response.message || "Update received."));
+  }
+
+  async function handleSubmit(text: string): Promise<void> {
+    append(makeMessage("user", text));
+
+    const context: TranscriptContext = {
+      draft_id: draftId ?? undefined,
+      active_draft: activeDraft ?? undefined,
+      active_application_id: selectedApplicationId,
+      recent_actions: recentActions,
+    };
+
+    setSubmitting(true);
+    try {
+      const response = await submitTranscript(text, context);
+      handleResponse(response, text);
+      setRecentActions((prev) => [...prev.slice(-2), text]);
+    } catch {
+      append(makeMessage("system", "Could not process that update. Please try again."));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 border-b px-3 py-2">
+        <p className="text-sm font-semibold">Updates</p>
+        <p className="text-xs text-muted-foreground">Type naturally. Your changes stay local.</p>
+      </div>
+
+      <ChatFeed messages={messages} />
+
+      <ChatInput submitting={submitting} onSubmit={handleSubmit} />
+    </div>
+  );
 }
