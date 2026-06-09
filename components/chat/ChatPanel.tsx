@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Application, ChatMessage, TranscriptContext, TranscriptResponse } from "@/lib/types";
 import { submitTranscript } from "@/lib/api";
 import { useSelection } from "@/lib/SelectionContext";
@@ -49,6 +49,9 @@ export default function ChatPanel({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [recentActions, setRecentActions] = useState<string[]>([]);
+  const [inputText, setInputText] = useState("");
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function append(...msgs: ChatMessage[]) {
     setMessages((prev) => [...prev, ...msgs]);
@@ -121,6 +124,33 @@ export default function ChatPanel({
     }
   }
 
+  function clearCountdownTimer() {
+    if (countdownTimerRef.current !== null) {
+      clearTimeout(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  }
+
+  function handleStartCountdown(text: string) {
+    clearCountdownTimer();
+    setCountdown(2);
+    countdownTimerRef.current = setTimeout(() => {
+      setCountdown(1);
+      countdownTimerRef.current = setTimeout(() => {
+        setCountdown(null);
+        setInputText("");
+        void handleSubmit(text);
+      }, 1000);
+    }, 1000);
+  }
+
+  function handleCountdownChange(value: number | null) {
+    if (value === null) {
+      clearCountdownTimer();
+    }
+    setCountdown(value);
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="shrink-0 border-b px-3 py-2">
@@ -130,7 +160,15 @@ export default function ChatPanel({
 
       <ChatFeed messages={messages} />
 
-      <ChatInput submitting={submitting} onSubmit={handleSubmit} />
+      <ChatInput
+        value={inputText}
+        onValueChange={setInputText}
+        submitting={submitting}
+        onSubmit={handleSubmit}
+        countdown={countdown}
+        onCountdownChange={handleCountdownChange}
+        onStartCountdown={handleStartCountdown}
+      />
     </div>
   );
 }

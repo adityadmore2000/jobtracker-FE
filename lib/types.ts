@@ -63,3 +63,11 @@ export type TranscriptResponse = {
   confirmation_kind?: string;
   clarification_question?: string;
 };
+
+export type LiveKitTokenResponse = {
+  url: string;
+  room_name: string;
+  participant_identity: string;
+  access_token: string;
+  expires_at: string;
+};

@@ -2,6 +2,7 @@ import { API_BASE_URL } from "@/app/config";
 import {
   Application,
   ApplicationNote,
+  LiveKitTokenResponse,
   TimelineEvent,
   TranscriptContext,
   TranscriptResponse,
@@ -61,6 +62,16 @@ export async function archiveApplication(applicationId: number): Promise<void> {
 export async function restoreApplication(applicationId: number): Promise<void> {
   const res = await fetch(`${BASE_URL}/applications/${applicationId}/restore`, {
     method: "POST",
+  });
+  return handleResponse(res);
+}
+
+export async function fetchLiveKitToken(roomName?: string): Promise<LiveKitTokenResponse> {
+  const body = roomName ? { room_name: roomName } : {};
+  const res = await fetch(`${BASE_URL}/livekit/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
   return handleResponse(res);
 }
