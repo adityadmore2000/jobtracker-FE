@@ -108,6 +108,7 @@ type SemanticTranscriptResponse = {
   proposal: SemanticToolCallProposal;
   raw_transcript: string;
   application_id: number | null;
+  draft_id: string | null;
   draft: ApplicationFormState | null;
   drafts: ApplicationFormState[];
   warnings: string[];
@@ -151,6 +152,7 @@ type TranscriptContext = {
   active_draft: ActiveDraftState | null;
   active_application: { application_id: number } | null;
   recent_actions: string[];
+  draft_id: string | null;
 };
 
 type DraftMode = "create" | "update";
@@ -718,6 +720,7 @@ export default function Home() {
   const [draftAsrContext, setDraftAsrContext] = useState<DraftAsrContext | null>(null);
   const [transcriptContext, setTranscriptContext] = useState<TranscriptContext>({
     active_draft: null,
+    draft_id: null,
     active_application: null,
     recent_actions: [],
   });
@@ -1061,13 +1064,14 @@ export default function Home() {
         active_draft: toActiveDraftState(draftValue),
         active_application: transcriptContext.active_application,
         recent_actions: transcriptContext.recent_actions,
+        draft_id: transcriptContext.draft_id,
       };
     }
 
     return transcriptContext;
   }
 
-  function openDraftPreview(draft: ApplicationFormState, mode: DraftMode, applicationId: number | null, asrContext: DraftAsrContext, warnings: string[]) {
+  function openDraftPreview(draft: ApplicationFormState, mode: DraftMode, applicationId: number | null, asrContext: DraftAsrContext, warnings: string[], newDraftId?: string | null) {
     setDraftValue(draft);
     setDraftMode(mode);
     setDraftApplicationId(applicationId);
@@ -1077,6 +1081,7 @@ export default function Home() {
     setTranscriptContext((currentContext) => ({
       active_draft: toActiveDraftState(draft),
       active_application: currentContext.active_application,
+      draft_id: newDraftId !== undefined ? newDraftId : currentContext.draft_id,
       recent_actions: pushRecentAction(
         currentContext.recent_actions,
         `${mode === "update" ? "Prepared update preview" : "Prepared draft"} for ${draft.company}${primaryRole(draft) ? ` - ${primaryRole(draft)}` : ""}`,
@@ -1142,13 +1147,13 @@ export default function Home() {
       }
 
       if (parsed.operation === "update" && parsed.draft && parsed.application_id !== null) {
-        openDraftPreview(parsed.draft, "update", parsed.application_id, asrContext, parsed.warnings);
+        openDraftPreview(parsed.draft, "update", parsed.application_id, asrContext, parsed.warnings, parsed.draft_id);
         return;
       }
 
       if (parsed.operation === "create" && parsed.draft) {
         const mergedDraft = mergeDraftWithExplicitPatch(draftValue, parsed.draft, proposalFields);
-        openDraftPreview(mergedDraft, "create", null, asrContext, parsed.warnings);
+        openDraftPreview(mergedDraft, "create", null, asrContext, parsed.warnings, parsed.draft_id);
         return;
       }
 
@@ -1210,6 +1215,7 @@ export default function Home() {
       ...currentContext,
       active_draft: null,
       active_application: null,
+      draft_id: null,
     }));
   }
 
@@ -1230,6 +1236,7 @@ export default function Home() {
     setTranscriptContext((currentContext) => ({
       active_draft: null,
       active_application: currentContext.active_application,
+      draft_id: null,
       recent_actions: pushRecentAction(
         currentContext.recent_actions,
         `Saved transcript changes for ${savedRecord.company}${primaryRole(savedRecord) ? ` - ${primaryRole(savedRecord)}` : ""}`,
