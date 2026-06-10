@@ -5,7 +5,7 @@ import type { Application } from "@/lib/types";
 
 const STATUS_OPTIONS = ["", "in_touch", "applied", "accepted", "rejected"] as const;
 const PRIORITY_OPTIONS = ["", "LOW", "MEDIUM", "HIGH"] as const;
-const LOCATION_OPTIONS = ["", "remote", "hybrid", "onsite"] as const;
+const LOCATION_OPTIONS = ["", "remote", "hybrid", "on-site"] as const;
 const EMPLOYMENT_TYPE_OPTIONS = ["Internship", "Full Time", "Part Time"] as const;
 const CURRENT_STAGE_OPTIONS = [
   "Tailored",
