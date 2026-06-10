@@ -7,6 +7,7 @@ type ApplicationRowProps = {
   application: Partial<Application>;
   isDraft?: boolean;
   isSelected?: boolean;
+  hasPendingChanges?: boolean;
   draftId?: string | null;
   onSelect?: (applicationId: number) => void;
   onSelectDraft?: (draftId: string) => void;
@@ -25,6 +26,7 @@ export default function ApplicationRow({
   application,
   isDraft = false,
   isSelected = false,
+  hasPendingChanges = false,
   draftId,
   onSelect,
   onSelectDraft,
@@ -73,7 +75,7 @@ export default function ApplicationRow({
   return (
     <tr className={rowClass} {...interactiveProps}>
       <td className="px-3 py-2 text-sm">
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1.5">
           {isDraft && (
             <button
               type="button"
@@ -90,6 +92,11 @@ export default function ApplicationRow({
             </button>
           )}
           {cell(application.company)}
+          {hasPendingChanges && (
+            <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-700">
+              Pending
+            </span>
+          )}
         </span>
       </td>
       <td className="px-3 py-2 text-sm">{cell(application.role)}</td>

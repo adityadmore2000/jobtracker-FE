@@ -1,8 +1,8 @@
 "use client";
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
-import type { Application } from "@/lib/types";
-import { fetchApplications, fetchArchivedApplications } from "@/lib/api";
+import type { Application, ApplicationChangeDraft } from "@/lib/types";
+import { fetchApplications, fetchArchivedApplications, getApplicationChangeDraft } from "@/lib/api";
 import { useSelection } from "@/lib/SelectionContext";
 import ApplicationsTable from "./ApplicationsTable";
 import DetailPanel from "@/components/detail/DetailPanel";
@@ -25,12 +25,16 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
     const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [pendingChangeDrafts, setPendingChangeDrafts] = useState<Map<number, ApplicationChangeDraft>>(new Map());
 
     const { selection, setSelection, selectedApplicationId, setSelectedApplicationId } =
       useSelection();
 
     const selectedDraftId =
       selection?.kind === "draft" ? selection.draftId : null;
+
+    const selectedChangeDraftId =
+      selection?.kind === "pending_changes" ? selection.changeDraftId : null;
 
     const refresh = useCallback(async () => {
       setLoading(true);
@@ -60,6 +64,23 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
     useEffect(() => {
       void refresh();
     }, [refresh]);
+
+    useEffect(() => {
+      if (selectedChangeDraftId === null) return;
+      if (pendingChangeDrafts.has(selectedChangeDraftId)) return;
+      void getApplicationChangeDraft(selectedChangeDraftId).then((cd) => {
+        setPendingChangeDrafts((prev) => new Map(prev).set(cd.id, cd));
+      });
+    }, [selectedChangeDraftId, pendingChangeDrafts]);
+
+    const selectedChangeDraft =
+      selectedChangeDraftId !== null
+        ? (pendingChangeDrafts.get(selectedChangeDraftId) ?? null)
+        : null;
+
+    const pendingChangesApplicationIds = new Set(
+      [...pendingChangeDrafts.values()].map((cd) => cd.target_application_id)
+    );
 
     const selectedApplication =
       [...applications, ...archived].find(
@@ -98,6 +119,19 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
       [onActiveDraftChange]
     );
 
+    const handleChangeDraftMutated = useCallback(
+      (changeDraftId: number) => {
+        setPendingChangeDrafts((prev) => {
+          const next = new Map(prev);
+          next.delete(changeDraftId);
+          return next;
+        });
+        setSelection(null);
+        void refresh();
+      },
+      [refresh, setSelection]
+    );
+
     const handleSelectDraft = useCallback(
       (id: string) => {
         setSelection({ kind: "draft", draftId: id });
@@ -118,6 +152,7 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
             error={error}
             selectedApplicationId={selectedApplicationId}
             selectedDraftId={selectedDraftId}
+            pendingChangesApplicationIds={pendingChangesApplicationIds}
             onActiveTabChange={setActiveTab}
             onSelectApplication={setSelectedApplicationId}
             onSelectDraft={handleSelectDraft}
@@ -131,10 +166,12 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
           activeDraft={activeDraft}
           draftId={draftId}
           selectedDraftId={selectedDraftId}
+          selectedChangeDraft={selectedChangeDraft}
           onApplicationMutated={handleDetailMutation}
           onDraftSaved={handleDraftSaved}
           onDraftDiscarded={handleDraftDiscarded}
           onDraftPatched={handleDraftPatched}
+          onChangeDraftMutated={handleChangeDraftMutated}
         />
       </div>
     );

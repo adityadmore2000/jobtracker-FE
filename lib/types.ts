@@ -45,12 +45,27 @@ export type TranscriptContext = {
   recent_actions?: string[];
 };
 
+export type ApplicationChangeDraft = {
+  id: number;
+  kind: string;
+  target_application_id: number;
+  original: Application;
+  preview: Application;
+  changed_fields: string[];
+  created_at: string;
+  updated_at: string;
+};
+
 export type TranscriptStatus =
   | "draft_created"
   | "draft_updated"
   | "saved"
   | "discarded"
   | "updated"
+  | "pending_changes_created"
+  | "pending_changes_updated"
+  | "changes_applied"
+  | "changes_discarded"
   | "clarification"
   | "no_change"
   | "error";
@@ -62,6 +77,7 @@ export type TranscriptResponse = {
   draft_id: string | null;
   draft: Application | null;
   application?: Application | null;
+  pending_changes: ApplicationChangeDraft | null;
   warnings: string[];
   clarification_question: string | null;
 };

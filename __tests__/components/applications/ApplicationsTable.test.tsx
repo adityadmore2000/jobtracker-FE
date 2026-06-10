@@ -28,12 +28,15 @@ const defaultProps = {
   applications: [makeApp(1), makeApp(2)],
   archived: [makeApp(3, { company: "Archived Co" })],
   activeDraft: null,
+  draftId: null,
   activeTab: "active" as const,
   loading: false,
   error: null,
   selectedApplicationId: null,
+  selectedDraftId: null,
   onActiveTabChange: vi.fn(),
   onSelectApplication: vi.fn(),
+  onSelectDraft: vi.fn(),
   onRetry: vi.fn(),
 };
 

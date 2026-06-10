@@ -11,6 +11,7 @@ type ApplicationsTableProps = {
   error: string | null;
   selectedApplicationId: number | null;
   selectedDraftId: string | null;
+  pendingChangesApplicationIds?: Set<number>;
   onActiveTabChange: (tab: "active" | "archived") => void;
   onSelectApplication: (applicationId: number) => void;
   onSelectDraft: (draftId: string) => void;
@@ -27,6 +28,7 @@ export default function ApplicationsTable({
   error,
   selectedApplicationId,
   selectedDraftId,
+  pendingChangesApplicationIds = new Set(),
   onActiveTabChange,
   onSelectApplication,
   onSelectDraft,
@@ -100,6 +102,7 @@ export default function ApplicationsTable({
               key={app.id}
               application={app}
               isSelected={app.id === selectedApplicationId}
+              hasPendingChanges={pendingChangesApplicationIds.has(app.id)}
               onSelect={onSelectApplication}
             />
           ))}
@@ -125,6 +128,7 @@ export default function ApplicationsTable({
             key={app.id}
             application={app}
             isSelected={app.id === selectedApplicationId}
+            hasPendingChanges={pendingChangesApplicationIds.has(app.id)}
             onSelect={onSelectApplication}
           />
         ))}

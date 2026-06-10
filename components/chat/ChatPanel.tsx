@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import type { Application, ChatMessage, TranscriptContext, TranscriptResponse } from "@/lib/types";
 import { submitTranscript } from "@/lib/api";
 import { useSelection } from "@/lib/SelectionContext";
+import type { SelectedTrackerItem } from "@/lib/SelectionContext";
 import ChatFeed from "./ChatFeed";
 import ChatInput from "./ChatInput";
 
@@ -45,7 +46,7 @@ export default function ChatPanel({
   onDraftIdChange,
   onApplicationMutated,
 }: ChatPanelProps) {
-  const { selectedApplicationId } = useSelection();
+  const { selectedApplicationId, setSelection } = useSelection();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [recentActions, setRecentActions] = useState<string[]>([]);
@@ -86,6 +87,25 @@ export default function ChatPanel({
 
     if (status === "updated") {
       append(makeMessage("system", response.message));
+      onApplicationMutated();
+      return;
+    }
+
+    if (status === "pending_changes_created" || status === "pending_changes_updated") {
+      append(makeMessage("system", response.message));
+      if (response.pending_changes) {
+        const newSelection: SelectedTrackerItem = {
+          kind: "pending_changes",
+          changeDraftId: response.pending_changes.id,
+        };
+        setSelection(newSelection);
+      }
+      return;
+    }
+
+    if (status === "changes_applied" || status === "changes_discarded") {
+      append(makeMessage("system", response.message));
+      setSelection(null);
       onApplicationMutated();
       return;
     }

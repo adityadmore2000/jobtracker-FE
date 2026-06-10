@@ -5,6 +5,7 @@ import { createContext, useContext, useState, ReactNode } from "react";
 export type SelectedTrackerItem =
   | { kind: "draft"; draftId: string }
   | { kind: "application"; applicationId: number }
+  | { kind: "pending_changes"; changeDraftId: number }
   | null;
 
 type SelectionContextValue = {

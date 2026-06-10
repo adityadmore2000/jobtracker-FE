@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "@/app/config";
 import {
   Application,
+  ApplicationChangeDraft,
   ApplicationNote,
   LiveKitTokenResponse,
   TimelineEvent,
@@ -159,6 +160,25 @@ export async function deleteApplicationPermanently(applicationId: number): Promi
     // leave as raw text
   }
   throw new Error(detail || `HTTP ${res.status}`);
+}
+
+export async function getApplicationChangeDraft(changeDraftId: number): Promise<ApplicationChangeDraft> {
+  const res = await fetch(`${BASE_URL}/application-change-drafts/${changeDraftId}`);
+  return handleResponse<ApplicationChangeDraft>(res);
+}
+
+export async function applyApplicationChangeDraft(changeDraftId: number): Promise<Application> {
+  const res = await fetch(`${BASE_URL}/application-change-drafts/${changeDraftId}/apply`, {
+    method: "POST",
+  });
+  return handleResponse<Application>(res);
+}
+
+export async function discardApplicationChangeDraft(changeDraftId: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/application-change-drafts/${changeDraftId}/discard`, {
+    method: "POST",
+  });
+  return handleResponse(res);
 }
 
 export async function fetchLiveKitToken(roomName?: string): Promise<LiveKitTokenResponse> {

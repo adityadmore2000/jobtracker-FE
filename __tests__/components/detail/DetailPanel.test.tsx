@@ -40,11 +40,14 @@ vi.mock("@/lib/api", async (importOriginal) => {
     saveDraft: vi.fn(),
     discardDraft: vi.fn(),
     updateApplication: vi.fn(),
+    applyApplicationChangeDraft: vi.fn(),
+    discardApplicationChangeDraft: vi.fn(),
   };
 });
 
 import * as api from "@/lib/api";
 import { ConflictError } from "@/lib/api";
+import type { ApplicationChangeDraft } from "@/lib/types";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const makeApp = (overrides?: Partial<Application>): Application => ({
@@ -530,5 +533,126 @@ describe("Conflict handling", () => {
     await waitFor(() => {
       expect(screen.getByText("Draft not found")).toBeInTheDocument();
     });
+  });
+});
+
+// ── Mode E: pending changes review ──────────────────────────────────────────
+describe("Mode E — pending changes review", () => {
+  const originalApp = makeApp();
+  const previewApp = makeApp({ status: "interviewing", priority: "HIGH" });
+
+  const makeChangeDraft = (overrides?: Partial<ApplicationChangeDraft>): ApplicationChangeDraft => ({
+    id: 99,
+    kind: "update",
+    target_application_id: originalApp.id,
+    original: originalApp,
+    preview: previewApp,
+    changed_fields: ["status", "priority"],
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+    ...overrides,
+  });
+
+  it("renders Pending Changes badge and diff table", () => {
+    const cd = makeChangeDraft();
+    render(
+      <DetailPanel
+        {...baseProps}
+        selectedChangeDraft={cd}
+        onChangeDraftMutated={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Pending Changes")).toBeInTheDocument();
+    expect(screen.getByText("Status")).toBeInTheDocument();
+    expect(screen.getByText("Priority")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply Changes" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+  });
+
+  it("shows original and preview values in the diff table", () => {
+    const cd = makeChangeDraft();
+    render(
+      <DetailPanel
+        {...baseProps}
+        selectedChangeDraft={cd}
+        onChangeDraftMutated={vi.fn()}
+      />
+    );
+    expect(screen.getByText("applied")).toBeInTheDocument();
+    expect(screen.getByText("MEDIUM")).toBeInTheDocument();
+    expect(screen.getByText("interviewing")).toBeInTheDocument();
+    expect(screen.getByText("HIGH")).toBeInTheDocument();
+  });
+
+  it("calls applyApplicationChangeDraft and onChangeDraftMutated on Apply", async () => {
+    const onMutated = vi.fn();
+    vi.mocked(api.applyApplicationChangeDraft).mockResolvedValue(originalApp);
+    const cd = makeChangeDraft();
+    render(
+      <DetailPanel
+        {...baseProps}
+        selectedChangeDraft={cd}
+        onChangeDraftMutated={onMutated}
+      />
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Apply Changes" }));
+    });
+    await waitFor(() => {
+      expect(api.applyApplicationChangeDraft).toHaveBeenCalledWith(99);
+      expect(onMutated).toHaveBeenCalledWith(99);
+    });
+  });
+
+  it("calls discardApplicationChangeDraft and onChangeDraftMutated on Discard", async () => {
+    const onMutated = vi.fn();
+    vi.mocked(api.discardApplicationChangeDraft).mockResolvedValue(undefined);
+    const cd = makeChangeDraft();
+    render(
+      <DetailPanel
+        {...baseProps}
+        selectedChangeDraft={cd}
+        onChangeDraftMutated={onMutated}
+      />
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    });
+    await waitFor(() => {
+      expect(api.discardApplicationChangeDraft).toHaveBeenCalledWith(99);
+      expect(onMutated).toHaveBeenCalledWith(99);
+    });
+  });
+
+  it("shows error message if apply fails", async () => {
+    vi.mocked(api.applyApplicationChangeDraft).mockRejectedValue(new Error("Server error"));
+    const cd = makeChangeDraft();
+    render(
+      <DetailPanel
+        {...baseProps}
+        selectedChangeDraft={cd}
+        onChangeDraftMutated={vi.fn()}
+      />
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Apply Changes" }));
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Server error")).toBeInTheDocument();
+    });
+  });
+
+  it("Mode E takes precedence over Mode A (no application selected)", () => {
+    const cd = makeChangeDraft();
+    render(
+      <DetailPanel
+        {...baseProps}
+        application={null}
+        selectedChangeDraft={cd}
+        onChangeDraftMutated={vi.fn()}
+      />
+    );
+    expect(screen.queryByText("Select an application to view details.")).not.toBeInTheDocument();
+    expect(screen.getByText("Pending Changes")).toBeInTheDocument();
   });
 });

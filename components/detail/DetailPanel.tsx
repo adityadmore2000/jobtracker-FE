@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Application } from "@/lib/types";
+import type { Application, ApplicationChangeDraft } from "@/lib/types";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import NotesTab from "./NotesTab";
 import TimelineTab from "./TimelineTab";
@@ -12,6 +12,8 @@ import {
   saveDraft,
   discardDraft,
   updateApplication,
+  applyApplicationChangeDraft,
+  discardApplicationChangeDraft,
   type ApplicationUpdatePayload,
 } from "@/lib/api";
 
@@ -27,6 +29,9 @@ type DetailPanelProps = {
   onDraftSaved: (savedApp: Application) => void;
   onDraftDiscarded: () => void;
   onDraftPatched: (updated: Application) => void;
+  // pending changes selection
+  selectedChangeDraft?: ApplicationChangeDraft | null;
+  onChangeDraftMutated?: (changeDraftId: number) => void;
 };
 
 type EditMode = "readonly" | "edit";
@@ -49,12 +54,119 @@ export default function DetailPanel({
   onDraftSaved,
   onDraftDiscarded,
   onDraftPatched,
+  selectedChangeDraft = null,
+  onChangeDraftMutated,
 }: DetailPanelProps) {
   const [editMode, setEditMode] = useState<EditMode>("readonly");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isDraftSelected = selectedDraftId !== null && selectedDraftId === draftId;
+
+  // Mode E: pending changes review
+  if (selectedChangeDraft !== null) {
+    const cd = selectedChangeDraft;
+    const { original, preview, changed_fields } = cd;
+
+    const handleApply = async () => {
+      setError(null);
+      setSubmitting(true);
+      try {
+        await applyApplicationChangeDraft(cd.id);
+        onChangeDraftMutated?.(cd.id);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to apply changes");
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    const handleDiscard = async () => {
+      setError(null);
+      setSubmitting(true);
+      try {
+        await discardApplicationChangeDraft(cd.id);
+        onChangeDraftMutated?.(cd.id);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to discard changes");
+        setSubmitting(false);
+      }
+    };
+
+    const FIELD_LABELS: Record<string, string> = {
+      company: "Company",
+      role: "Role",
+      status: "Status",
+      priority: "Priority",
+      location: "Location",
+      employment_types: "Employment types",
+      current_stages: "Stages",
+      job_link: "Job link",
+      next_action: "Next action",
+      comments: "Comments",
+      engaged_days: "Engaged days",
+    };
+
+    return (
+      <div className="flex h-72 shrink-0 flex-col overflow-hidden border-t">
+        <div className="flex shrink-0 items-center justify-between px-4 py-2">
+          <span className="flex items-center gap-2 text-sm font-medium">
+            {original.company} — {original.role}
+            <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-700">
+              Pending Changes
+            </span>
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => void handleApply()}
+              className="rounded bg-foreground px-2.5 py-1 text-xs font-medium text-background hover:opacity-80 disabled:opacity-50"
+            >
+              Apply Changes
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => void handleDiscard()}
+              className="rounded border px-2.5 py-1 text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+        {error && <p className="px-4 py-1 text-xs text-rose-600">{error}</p>}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-muted-foreground">
+                <th className="pb-1 pr-4 font-medium">Field</th>
+                <th className="pb-1 pr-4 font-medium">Current</th>
+                <th className="pb-1 font-medium">After applying</th>
+              </tr>
+            </thead>
+            <tbody>
+              {changed_fields.map((field) => {
+                const origVal = original[field as keyof Application];
+                const previewVal = preview[field as keyof Application];
+                const fmt = (v: unknown) =>
+                  Array.isArray(v) ? (v as string[]).join(", ") || "—" : String(v ?? "—");
+                return (
+                  <tr key={field} className="border-t">
+                    <td className="py-1 pr-4 font-medium text-muted-foreground">
+                      {FIELD_LABELS[field] ?? field}
+                    </td>
+                    <td className="py-1 pr-4 text-muted-foreground line-through">{fmt(origVal)}</td>
+                    <td className="py-1 font-medium text-foreground">{fmt(previewVal)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
   // Mode A: no selection
   if (!isDraftSelected && application === null) {

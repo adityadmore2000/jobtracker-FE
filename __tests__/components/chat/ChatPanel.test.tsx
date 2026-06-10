@@ -41,21 +41,14 @@ const defaultProps = {
   onApplicationMutated: vi.fn(),
 };
 
-function makeResponse(overrides: {
-  status?: TranscriptResponse["status"];
-  message?: string;
-  application_id?: number | null;
-  draft_id?: string | null;
-  draft?: Application | null;
-  warnings?: string[];
-  clarification_question?: string | null;
-} = {}): TranscriptResponse {
+function makeResponse(overrides: Partial<TranscriptResponse> = {}): TranscriptResponse {
   return {
     status: "clarification",
     message: "Please clarify.",
     application_id: null,
     draft_id: null,
     draft: null,
+    pending_changes: null,
     warnings: [],
     clarification_question: null,
     ...overrides,
@@ -318,5 +311,98 @@ describe("ChatPanel", () => {
     await act(async () => { await submitText("Applied for AI Engineer at Neilsoft"); });
     expect(onActiveDraftChange).toHaveBeenCalledWith(newDraft);
     expect(onDraftIdChange).toHaveBeenCalledWith("42");
+  });
+});
+
+// ── pending_changes status handling ─────────────────────────────────────────
+describe("pending_changes status handling", () => {
+  const makeApp = (): Application => ({
+    id: 5,
+    company: "Test Corp",
+    role: "Engineer",
+    status: "applied",
+    priority: "MEDIUM",
+    location: "remote",
+    job_link: "",
+    employment_types: [],
+    current_stages: [],
+    engaged_days: 0,
+    next_action: "",
+    comments: "",
+    is_draft: false,
+    draft_created_at: null,
+    archived_at: null,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  });
+
+  it("shows system message for pending_changes_created", async () => {
+    const app = makeApp();
+    mockSubmit.mockResolvedValue(
+      makeResponse({
+        status: "pending_changes_created",
+        message: "Changes staged for review.",
+        pending_changes: {
+          id: 99,
+          kind: "update",
+          target_application_id: app.id,
+          original: app,
+          preview: { ...app, status: "interviewing" },
+          changed_fields: ["status"],
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      })
+    );
+    renderPanel();
+    await act(async () => { await submitText("Update status to interviewing"); });
+    await waitFor(() => {
+      expect(screen.getByText("Changes staged for review.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows system message for pending_changes_updated", async () => {
+    const app = makeApp();
+    mockSubmit.mockResolvedValue(
+      makeResponse({
+        status: "pending_changes_updated",
+        message: "Pending changes updated.",
+        pending_changes: {
+          id: 99,
+          kind: "update",
+          target_application_id: app.id,
+          original: app,
+          preview: { ...app, priority: "HIGH" },
+          changed_fields: ["priority"],
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      })
+    );
+    renderPanel();
+    await act(async () => { await submitText("Also set priority to high"); });
+    await waitFor(() => {
+      expect(screen.getByText("Pending changes updated.")).toBeInTheDocument();
+    });
+  });
+
+  it("calls onApplicationMutated for changes_applied status", async () => {
+    const onApplicationMutated = vi.fn();
+    mockSubmit.mockResolvedValue(makeResponse({ status: "changes_applied", message: "Changes applied." }));
+    renderPanel({ onApplicationMutated });
+    await act(async () => { await submitText("Apply my pending changes"); });
+    await waitFor(() => {
+      expect(onApplicationMutated).toHaveBeenCalled();
+    });
+  });
+
+  it("calls onApplicationMutated for changes_discarded status", async () => {
+    const onApplicationMutated = vi.fn();
+    mockSubmit.mockResolvedValue(makeResponse({ status: "changes_discarded", message: "Changes discarded." }));
+    renderPanel({ onApplicationMutated });
+    await act(async () => { await submitText("Discard my pending changes"); });
+    await waitFor(() => {
+      expect(onApplicationMutated).toHaveBeenCalled();
+    });
   });
 });
