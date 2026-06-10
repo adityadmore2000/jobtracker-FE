@@ -6,12 +6,14 @@ import type { Application } from "@/lib/types";
 vi.mock("@/lib/api", () => ({
   archiveApplication: vi.fn(),
   restoreApplication: vi.fn(),
+  deleteApplicationPermanently: vi.fn(),
 }));
 
 import * as api from "@/lib/api";
 
 const mockArchive = vi.mocked(api.archiveApplication);
 const mockRestore = vi.mocked(api.restoreApplication);
+const mockDeletePermanently = vi.mocked(api.deleteApplicationPermanently);
 
 const makeApp = (overrides?: Partial<Application>): Application => ({
   id: 1,
@@ -215,5 +217,109 @@ describe("ArchiveButton — archived application", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it("renders Delete Permanently button for archived application", () => {
+    render(
+      <ArchiveButton
+        application={makeApp({ archived_at: "2024-01-02T00:00:00Z" })}
+        isArchived={true}
+        onMutated={vi.fn()}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Delete Permanently" })).toBeInTheDocument();
+  });
+
+  it("clicking Delete Permanently opens confirmation dialog", async () => {
+    render(
+      <ArchiveButton
+        application={makeApp({ archived_at: "2024-01-02T00:00:00Z" })}
+        isArchived={true}
+        onMutated={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete Permanently" }));
+    await waitFor(() =>
+      expect(screen.getByText("Delete this archived application permanently?")).toBeInTheDocument()
+    );
+  });
+
+  it("Cancel in delete dialog closes dialog without calling API", async () => {
+    render(
+      <ArchiveButton
+        application={makeApp({ archived_at: "2024-01-02T00:00:00Z" })}
+        isArchived={true}
+        onMutated={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete Permanently" }));
+    await waitFor(() => screen.getByText("Delete this archived application permanently?"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("Delete this archived application permanently?")).not.toBeInTheDocument()
+    );
+    expect(mockDeletePermanently).not.toHaveBeenCalled();
+  });
+
+  it("confirming delete calls deleteApplicationPermanently with correct id", async () => {
+    mockDeletePermanently.mockResolvedValue(undefined);
+    const onMutated = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ArchiveButton
+        application={makeApp({ id: 99, archived_at: "2024-01-02T00:00:00Z" })}
+        isArchived={true}
+        onMutated={onMutated}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete Permanently" }));
+    await waitFor(() => screen.getByText("Delete this archived application permanently?"));
+
+    // Click the confirm button inside the dialog
+    const deleteButtons = screen.getAllByRole("button", { name: "Delete Permanently" });
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+
+    await waitFor(() => expect(mockDeletePermanently).toHaveBeenCalledWith(99));
+  });
+
+  it("successful delete calls onMutated", async () => {
+    mockDeletePermanently.mockResolvedValue(undefined);
+    const onMutated = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ArchiveButton
+        application={makeApp({ archived_at: "2024-01-02T00:00:00Z" })}
+        isArchived={true}
+        onMutated={onMutated}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete Permanently" }));
+    await waitFor(() => screen.getByText("Delete this archived application permanently?"));
+
+    const deleteButtons = screen.getAllByRole("button", { name: "Delete Permanently" });
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it("failed delete shows error message", async () => {
+    mockDeletePermanently.mockRejectedValue(new Error("Only archived applications can be permanently deleted."));
+    render(
+      <ArchiveButton
+        application={makeApp({ archived_at: "2024-01-02T00:00:00Z" })}
+        isArchived={true}
+        onMutated={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete Permanently" }));
+    await waitFor(() => screen.getByText("Delete this archived application permanently?"));
+
+    const deleteButtons = screen.getAllByRole("button", { name: "Delete Permanently" });
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+
+    await waitFor(() => {
+      const matches = screen.getAllByText("Only archived applications can be permanently deleted.");
+      expect(matches.length).toBeGreaterThan(0);
+    });
   });
 });

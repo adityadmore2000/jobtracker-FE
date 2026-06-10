@@ -145,6 +145,22 @@ export async function discardDraft(draftId: string): Promise<void> {
   }
 }
 
+export async function deleteApplicationPermanently(applicationId: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/applications/${applicationId}`, {
+    method: "DELETE",
+  });
+  if (res.status === 204) return;
+  const body = await res.text();
+  if (res.status === 404) throw new Error("Application not found.");
+  let detail = body;
+  try {
+    detail = JSON.parse(body)?.detail ?? body;
+  } catch {
+    // leave as raw text
+  }
+  throw new Error(detail || `HTTP ${res.status}`);
+}
+
 export async function fetchLiveKitToken(roomName?: string): Promise<LiveKitTokenResponse> {
   const body = roomName ? { room_name: roomName } : {};
   const res = await fetch(`${BASE_URL}/livekit/token`, {

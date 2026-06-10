@@ -18,7 +18,16 @@ vi.mock("@/components/detail/TimelineTab", () => ({
 
 vi.mock("@/components/detail/ArchiveButton", () => ({
   default: ({ isArchived }: { isArchived: boolean }) => (
-    <button>{isArchived ? "Restore" : "Archive"}</button>
+    <div>
+      {isArchived ? (
+        <>
+          <button>Restore</button>
+          <button>Delete Permanently</button>
+        </>
+      ) : (
+        <button>Archive</button>
+      )}
+    </div>
   ),
 }));
 
@@ -350,6 +359,37 @@ describe("Mode D — draft edit", () => {
   });
 });
 
+// ── Delete Permanently visibility ────────────────────────────────────────────
+describe("Delete Permanently visibility", () => {
+  it("Delete Permanently absent for active saved application", () => {
+    render(<DetailPanel {...baseProps} application={makeApp()} />);
+    expect(screen.queryByRole("button", { name: "Delete Permanently" })).not.toBeInTheDocument();
+  });
+
+  it("Delete Permanently visible for archived saved application", () => {
+    render(
+      <DetailPanel
+        {...baseProps}
+        application={makeApp({ archived_at: "2024-01-02T00:00:00Z" })}
+        isArchived={true}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Delete Permanently" })).toBeInTheDocument();
+  });
+
+  it("Delete Permanently absent when draft is selected", () => {
+    render(
+      <DetailPanel
+        {...baseProps}
+        activeDraft={makeDraft()}
+        draftId="42"
+        selectedDraftId="42"
+      />
+    );
+    expect(screen.queryByRole("button", { name: "Delete Permanently" })).not.toBeInTheDocument();
+  });
+});
+
 // ── Regression: notes + timeline remain accessible in read-only mode ─────────
 describe("Regression", () => {
   it("notes and timeline remain visible in saved read-only mode", () => {
@@ -417,6 +457,59 @@ describe("Conflict handling", () => {
       // Form remains open — Save Changes button still present
       expect(screen.getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
     });
+  });
+
+  it("shows conflict message inline when patchDraft returns 409", async () => {
+    vi.mocked(api.patchDraft).mockRejectedValue(
+      new ConflictError("An application for Rockwell — AI Engineer already exists.")
+    );
+
+    const draftProps = {
+      ...baseProps,
+      activeDraft: makeDraft(),
+      draftId: "42",
+      selectedDraftId: "42",
+    };
+    render(<DetailPanel {...draftProps} />);
+
+    await act(async () => {
+      fireEvent.submit(
+        screen.getByRole("button", { name: "Save Draft Changes" }).closest("form")!
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("An application for Rockwell — AI Engineer already exists.")
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("draft form stays open after patchDraft 409 conflict", async () => {
+    vi.mocked(api.patchDraft).mockRejectedValue(
+      new ConflictError("An application for Rockwell — AI Engineer already exists.")
+    );
+
+    const draftProps = {
+      ...baseProps,
+      activeDraft: makeDraft(),
+      draftId: "42",
+      selectedDraftId: "42",
+    };
+    render(<DetailPanel {...draftProps} />);
+
+    await act(async () => {
+      fireEvent.submit(
+        screen.getByRole("button", { name: "Save Draft Changes" }).closest("form")!
+      );
+    });
+
+    await waitFor(() => {
+      // Form remains open — Save Draft Changes button still present
+      expect(screen.getByRole("button", { name: "Save Draft Changes" })).toBeInTheDocument();
+    });
+    // onDraftPatched was never called — draft not cleared
+    expect(baseProps.onDraftPatched).not.toHaveBeenCalled();
   });
 
   it("draft save error shown inline when saveDraft fails", async () => {
