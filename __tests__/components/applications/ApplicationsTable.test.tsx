@@ -6,7 +6,7 @@ import type { Application } from "@/lib/types";
 const makeApp = (id: number, overrides?: Partial<Application>): Application => ({
   id,
   company: `Company ${id}`,
-  roles: [`Role ${id}`],
+  role: `Role ${id}`,
   status: "Applied",
   priority: "LOW",
   location: "remote",
@@ -45,7 +45,7 @@ describe("ApplicationsTable", () => {
   });
 
   it("draft row appears before saved rows in the active tab", () => {
-    const draft = { company: "Draft Co", roles: ["AI Engineer"] };
+    const draft = { company: "Draft Co", role: "AI Engineer" };
     render(
       <ApplicationsTable
         {...defaultProps}
@@ -60,7 +60,7 @@ describe("ApplicationsTable", () => {
   });
 
   it("draft row is absent in the archived tab", () => {
-    const draft = { company: "Draft Co", roles: ["AI Engineer"] };
+    const draft = { company: "Draft Co", role: "AI Engineer" };
     render(
       <ApplicationsTable
         {...defaultProps}

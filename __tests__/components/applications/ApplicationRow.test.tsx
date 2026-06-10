@@ -6,7 +6,7 @@ import type { Application } from "@/lib/types";
 const savedApp: Application = {
   id: 1,
   company: "Acme Corp",
-  roles: ["ML Engineer"],
+  role: "ML Engineer",
   status: "Applied",
   priority: "HIGH",
   location: "remote",
@@ -25,7 +25,7 @@ const savedApp: Application = {
 
 const draftApp: Partial<Application> = {
   company: "Draft Co",
-  roles: ["AI Engineer"],
+  role: "AI Engineer",
 };
 
 describe("ApplicationRow — saved application", () => {
@@ -79,13 +79,13 @@ describe("ApplicationRow — saved application", () => {
     expect(row.className).toContain("bg-blue-50");
   });
 
-  it("renders multiple roles as comma-separated text", () => {
-    const multiRoleApp: Partial<Application> = {
+  it("renders role as plain text", () => {
+    const singleRoleApp: Partial<Application> = {
       company: "MultiCo",
-      roles: ["AI Engineer", "RAG Engineer"],
+      role: "AI Engineer",
     };
-    render(<table><tbody><ApplicationRow application={multiRoleApp} isDraft draftId="d1" onSelectDraft={vi.fn()} /></tbody></table>);
-    expect(screen.getByText("AI Engineer, RAG Engineer")).toBeInTheDocument();
+    render(<table><tbody><ApplicationRow application={singleRoleApp} isDraft draftId="d1" onSelectDraft={vi.fn()} /></tbody></table>);
+    expect(screen.getByText("AI Engineer")).toBeInTheDocument();
   });
 
   it("renders multiple employment_types as comma-separated text", () => {

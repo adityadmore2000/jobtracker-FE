@@ -12,7 +12,7 @@ const BASE_URL = API_BASE_URL;
 
 export type ApplicationUpdatePayload = {
   company?: string;
-  roles_json?: string[];
+  role?: string;
   employment_types_json?: string[];
   job_link?: string;
   location?: string;
@@ -26,7 +26,7 @@ export type ApplicationUpdatePayload = {
 
 export type DraftPatchPayload = {
   company?: string;
-  roles?: string[];
+  role?: string;
   employment_types?: string[];
   job_link?: string;
   location?: string;

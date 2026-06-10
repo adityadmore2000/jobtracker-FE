@@ -1,7 +1,7 @@
 export type Application = {
   id: number;
   company: string;
-  roles: string[];
+  role: string;
   employment_types: string[];
   job_link: string;
   location: string;

@@ -24,7 +24,7 @@ const mockFetchArchivedApplications = vi.mocked(api.fetchArchivedApplications);
 const makeApp = (id: number, overrides?: Partial<Application>): Application => ({
   id,
   company: `Company ${id}`,
-  roles: [`Role ${id}`],
+  role: `Role ${id}`,
   status: "Applied",
   priority: "LOW",
   location: "remote",
@@ -196,7 +196,7 @@ describe("ApplicationsPanel — saved-row selection", () => {
 describe("ApplicationsPanel — draft selection", () => {
   const draft: Partial<Application> = {
     company: "Draft Co",
-    roles: ["Draft Role"],
+    role: "Draft Role",
     employment_types: [],
     current_stages: [],
     status: "",
@@ -298,7 +298,7 @@ describe("ApplicationsPanel — draft selection", () => {
 
 describe("ApplicationsPanel — regression", () => {
   it("saved-row selection still works after draft row is added", async () => {
-    const draft: Partial<Application> = { company: "Draft Co", roles: ["Draft Role"] };
+    const draft: Partial<Application> = { company: "Draft Co", role: "Draft Role" };
     renderPanel({ activeDraft: draft, draftId: "42" });
 
     await waitFor(() => screen.getByText("Company 1"));
@@ -310,7 +310,7 @@ describe("ApplicationsPanel — regression", () => {
   });
 
   it("draft row still renders as amber when a saved row is also selected", async () => {
-    const draft: Partial<Application> = { company: "Draft Co", roles: ["Draft Role"] };
+    const draft: Partial<Application> = { company: "Draft Co", role: "Draft Role" };
     renderPanel({ activeDraft: draft, draftId: "42" });
 
     await waitFor(() => screen.getByText("Company 1"));

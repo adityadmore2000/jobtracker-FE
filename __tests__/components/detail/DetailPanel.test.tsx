@@ -36,7 +36,7 @@ import * as api from "@/lib/api";
 const makeApp = (overrides?: Partial<Application>): Application => ({
   id: 5,
   company: "Test Corp",
-  roles: ["Software Engineer"],
+  role: "Software Engineer",
   status: "applied",
   priority: "MEDIUM",
   location: "remote",
@@ -56,7 +56,7 @@ const makeApp = (overrides?: Partial<Application>): Application => ({
 
 const makeDraft = (overrides?: Partial<Application>): Partial<Application> => ({
   company: "Draft Corp",
-  roles: ["AI Engineer"],
+  role: "AI Engineer",
   priority: "LOW",
   location: "remote",
   employment_types: [],
@@ -271,12 +271,12 @@ describe("Mode D — draft edit", () => {
     expect(draftProps.onDraftPatched).toHaveBeenCalledWith(updated);
   });
 
-  it("multi-role input produces correct roles array in patchDraft call", async () => {
+  it("role input sends role string in patchDraft call", async () => {
     vi.mocked(api.patchDraft).mockResolvedValue({} as Application);
     render(<DetailPanel {...draftProps} />);
 
-    const rolesInput = screen.getByPlaceholderText("e.g. AI Engineer, RAG Engineer");
-    fireEvent.change(rolesInput, { target: { value: "AI Engineer, RAG Engineer" } });
+    const roleInput = screen.getByPlaceholderText("e.g. AI Engineer");
+    fireEvent.change(roleInput, { target: { value: "RAG Engineer" } });
 
     await act(async () => {
       fireEvent.submit(
@@ -287,7 +287,7 @@ describe("Mode D — draft edit", () => {
     await waitFor(() => {
       expect(vi.mocked(api.patchDraft)).toHaveBeenCalledWith(
         "42",
-        expect.objectContaining({ roles: ["AI Engineer", "RAG Engineer"] })
+        expect.objectContaining({ role: "RAG Engineer" })
       );
     });
   });
@@ -296,8 +296,8 @@ describe("Mode D — draft edit", () => {
     vi.mocked(api.patchDraft).mockResolvedValue({} as Application);
     render(<DetailPanel {...draftProps} />);
 
-    const rolesInput = screen.getByPlaceholderText("e.g. AI Engineer, RAG Engineer");
-    fireEvent.change(rolesInput, { target: { value: "LLM Inference Optimization Engineer" } });
+    const roleInput = screen.getByPlaceholderText("e.g. AI Engineer");
+    fireEvent.change(roleInput, { target: { value: "LLM Inference Optimization Engineer" } });
 
     await act(async () => {
       fireEvent.submit(
@@ -308,7 +308,7 @@ describe("Mode D — draft edit", () => {
     await waitFor(() => {
       expect(vi.mocked(api.patchDraft)).toHaveBeenCalledWith(
         "42",
-        expect.objectContaining({ roles: ["LLM Inference Optimization Engineer"] })
+        expect.objectContaining({ role: "LLM Inference Optimization Engineer" })
       );
     });
   });

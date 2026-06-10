@@ -6,7 +6,7 @@ export type ApplicationFormState = Omit<ApplicationRecord, "id" | "created_at" |
 
 export type ActiveDraftState = {
   company: string;
-  roles: string[];
+  role: string;
   employment_types: string[];
   job_link: string;
   location: string;
@@ -25,7 +25,7 @@ export function toggleMultiSelectValue(values: string[], value: string) {
 export function normalizeApplicationRecord(record: ApplicationRecord): ApplicationRecord {
   return {
     ...record,
-    roles: Array.isArray(record.roles) ? record.roles : [],
+    role: record.role ?? "",
     employment_types: Array.isArray(record.employment_types) ? record.employment_types : [],
     current_stages: Array.isArray(record.current_stages) ? record.current_stages : [],
     company: record.company ?? "",
@@ -53,7 +53,7 @@ export function upsertApplicationRecord(records: ApplicationRecord[], savedRecor
 export function toActiveDraftState(value: ApplicationFormState): ActiveDraftState {
   return {
     company: value.company,
-    roles: value.roles,
+    role: value.role,
     employment_types: value.employment_types,
     job_link: value.job_link,
     location: value.location,

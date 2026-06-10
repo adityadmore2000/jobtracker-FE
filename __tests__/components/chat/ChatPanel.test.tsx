@@ -96,7 +96,7 @@ describe("ChatPanel", () => {
 
   it("submit passes transcript, draft_id, active_draft, active_application_id, recent_actions", async () => {
     mockSubmit.mockResolvedValue(makeResponse());
-    const draft: Partial<Application> = { company: "Neilsoft", roles: ["AI Engineer"] };
+    const draft: Partial<Application> = { company: "Neilsoft", role: "AI Engineer" };
     renderPanel({ activeDraft: draft, draftId: "draft-123" });
     await act(async () => { await submitText("save the draft"); });
     expect(mockSubmit).toHaveBeenCalledWith(
@@ -113,7 +113,7 @@ describe("ChatPanel", () => {
   it("draft_created updates draft ID and active draft callbacks", async () => {
     const onDraftIdChange = vi.fn();
     const onActiveDraftChange = vi.fn();
-    const newDraft: Partial<Application> = { company: "Neilsoft", roles: ["AI Engineer"] };
+    const newDraft: Partial<Application> = { company: "Neilsoft", role: "AI Engineer" };
     mockSubmit.mockResolvedValue(makeResponse({
       status: "draft_created",
       draft: newDraft as Application,
@@ -127,7 +127,7 @@ describe("ChatPanel", () => {
   });
 
   it("draft_created appends draft summary message", async () => {
-    const newDraft: Partial<Application> = { company: "Neilsoft", roles: ["AI Engineer"] };
+    const newDraft: Partial<Application> = { company: "Neilsoft", role: "AI Engineer" };
     mockSubmit.mockResolvedValue(makeResponse({
       status: "draft_created",
       draft: newDraft as Application,
@@ -155,7 +155,7 @@ describe("ChatPanel", () => {
   it("draft_updated updates draft callbacks", async () => {
     const onDraftIdChange = vi.fn();
     const onActiveDraftChange = vi.fn();
-    const updatedDraft: Partial<Application> = { company: "Updated Co", roles: ["ML Engineer"] };
+    const updatedDraft: Partial<Application> = { company: "Updated Co", role: "ML Engineer" };
     mockSubmit.mockResolvedValue(makeResponse({
       status: "draft_updated",
       draft: updatedDraft as Application,
@@ -306,7 +306,7 @@ describe("ChatPanel", () => {
     const onDraftIdChange = vi.fn();
     const newDraft: Partial<Application> = {
       company: "Neilsoft",
-      roles: ["AI Engineer"],
+      role: "AI Engineer",
     };
     mockSubmit.mockResolvedValue(makeResponse({
       status: "draft_created",

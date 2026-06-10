@@ -18,7 +18,7 @@ const CURRENT_STAGE_OPTIONS = [
 
 export type ApplicationFormValues = {
   company: string;
-  rolesInput: string;
+  role: string;
   employment_types: string[];
   job_link: string;
   location: string;
@@ -33,7 +33,7 @@ export type ApplicationFormValues = {
 function toFormValues(app: Partial<Application>): ApplicationFormValues {
   return {
     company: app.company ?? "",
-    rolesInput: (app.roles ?? []).join(", "),
+    role: app.role ?? "",
     employment_types: app.employment_types ?? [],
     job_link: app.job_link ?? "",
     location: app.location ?? "",
@@ -46,12 +46,6 @@ function toFormValues(app: Partial<Application>): ApplicationFormValues {
   };
 }
 
-export function parseRoles(rolesInput: string): string[] {
-  return rolesInput
-    .split(",")
-    .map((r) => r.trim())
-    .filter((r) => r.length > 0);
-}
 
 type ApplicationFormProps = {
   initial: Partial<Application>;
@@ -116,14 +110,14 @@ export default function ApplicationForm({
         </div>
       </div>
 
-      {/* Row 2: roles (comma-separated) */}
+      {/* Row 2: role */}
       <div className={fieldCls}>
-        <label className={labelCls}>Roles (comma-separated)</label>
+        <label className={labelCls}>Role</label>
         <input
           className={inputCls}
-          value={values.rolesInput}
-          onChange={(e) => set("rolesInput", e.target.value)}
-          placeholder="e.g. AI Engineer, RAG Engineer"
+          value={values.role}
+          onChange={(e) => set("role", e.target.value)}
+          placeholder="e.g. AI Engineer"
         />
       </div>
 

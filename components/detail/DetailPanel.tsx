@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import NotesTab from "./NotesTab";
 import TimelineTab from "./TimelineTab";
 import ArchiveButton from "./ArchiveButton";
-import ApplicationForm, { parseRoles, type ApplicationFormValues } from "./ApplicationForm";
+import ApplicationForm, { type ApplicationFormValues } from "./ApplicationForm";
 import {
   patchDraft,
   saveDraft,
@@ -77,7 +77,7 @@ export default function DetailPanel({
       try {
         const updated = await patchDraft(draftId, {
           company: values.company || undefined,
-          roles: parseRoles(values.rolesInput),
+          role: values.role || undefined,
           employment_types: values.employment_types,
           job_link: values.job_link || undefined,
           location: values.location || undefined,
@@ -126,7 +126,7 @@ export default function DetailPanel({
         <div className="flex shrink-0 items-center justify-between px-4 py-2">
           <span className="flex items-center gap-2 text-sm font-medium">
             {activeDraft.company || "Untitled draft"}
-            {activeDraft.roles && activeDraft.roles.length > 0 ? ` — ${activeDraft.roles[0]}` : ""}
+            {activeDraft.role ? ` — ${activeDraft.role}` : ""}
             <DraftBadge />
           </span>
           <div className="flex items-center gap-2">
@@ -173,7 +173,7 @@ export default function DetailPanel({
         try {
           const payload: ApplicationUpdatePayload = {
             company: values.company || undefined,
-            roles_json: parseRoles(values.rolesInput),
+            role: values.role || undefined,
             employment_types_json: values.employment_types,
             job_link: values.job_link || undefined,
             location: values.location || undefined,
@@ -199,9 +199,7 @@ export default function DetailPanel({
           <div className="flex shrink-0 items-center justify-between px-4 py-2">
             <span className="text-sm font-medium">
               {application.company}
-              {application.roles && application.roles.length > 0
-                ? ` — ${application.roles[0]}`
-                : ""}
+              {application.role ? ` — ${application.role}` : ""}
             </span>
             <span className="text-xs text-muted-foreground">Editing</span>
           </div>
@@ -238,9 +236,7 @@ export default function DetailPanel({
         <div className="flex shrink-0 items-center justify-between px-4 py-2">
           <span className="text-sm font-medium">
             {application.company}
-            {application.roles && application.roles.length > 0
-              ? ` — ${application.roles[0]}`
-              : ""}
+            {application.role ? ` — ${application.role}` : ""}
           </span>
           <div className="flex items-center gap-2">
             {!isArchived && (

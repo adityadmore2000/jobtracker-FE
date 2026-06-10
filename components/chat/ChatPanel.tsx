@@ -28,10 +28,9 @@ function makeMessage(role: ChatMessage["role"], text: string): ChatMessage {
 
 function buildDraftSummary(draft?: Partial<Application>): string {
   if (!draft) return "Draft active.";
-  const role = draft.roles && draft.roles.length > 0 ? draft.roles[0] : null;
   const parts = [
     draft.company,
-    role,
+    draft.role || null,
     draft.location,
     draft.priority ? `${draft.priority} priority` : null,
     draft.status,

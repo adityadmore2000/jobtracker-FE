@@ -92,7 +92,7 @@ export default function ApplicationRow({
           {cell(application.company)}
         </span>
       </td>
-      <td className="px-3 py-2 text-sm">{renderArray(application.roles)}</td>
+      <td className="px-3 py-2 text-sm">{cell(application.role)}</td>
       <td className="px-3 py-2 text-sm">
         {displayStatus ? (
           <StatusBadge status={displayStatus} />

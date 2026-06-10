@@ -1,12 +1,12 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
-import ApplicationForm, { parseRoles } from "@/components/detail/ApplicationForm";
+import ApplicationForm from "@/components/detail/ApplicationForm";
 import type { Application } from "@/lib/types";
 
 const makeApp = (overrides?: Partial<Application>): Application => ({
   id: 1,
   company: "Test Corp",
-  roles: ["AI Engineer"],
+  role: "AI Engineer",
   status: "applied",
   priority: "MEDIUM",
   location: "remote",
@@ -24,26 +24,6 @@ const makeApp = (overrides?: Partial<Application>): Application => ({
   ...overrides,
 });
 
-describe("parseRoles", () => {
-  it("splits comma-separated roles and trims whitespace", () => {
-    expect(parseRoles("AI Engineer, RAG Engineer")).toEqual(["AI Engineer", "RAG Engineer"]);
-  });
-
-  it("removes blank entries", () => {
-    expect(parseRoles("AI Engineer, , RAG Engineer")).toEqual(["AI Engineer", "RAG Engineer"]);
-  });
-
-  it("accepts unknown roles", () => {
-    expect(parseRoles("LLM Inference Optimization Engineer")).toEqual([
-      "LLM Inference Optimization Engineer",
-    ]);
-  });
-
-  it("returns empty array for empty input", () => {
-    expect(parseRoles("")).toEqual([]);
-  });
-});
-
 describe("ApplicationForm", () => {
   it("prefills company from initial", () => {
     render(
@@ -57,35 +37,35 @@ describe("ApplicationForm", () => {
     expect(screen.getByPlaceholderText("e.g. Neilsoft")).toHaveValue("Neilsoft");
   });
 
-  it("prefills roles as comma-separated input", () => {
+  it("prefills role input from initial", () => {
     render(
       <ApplicationForm
-        initial={makeApp({ roles: ["AI Engineer", "RAG Engineer"] })}
+        initial={makeApp({ role: "AI Engineer" })}
         submitting={false}
         submitLabel="Save"
         onSubmit={vi.fn()}
       />
     );
     expect(
-      screen.getByPlaceholderText("e.g. AI Engineer, RAG Engineer")
-    ).toHaveValue("AI Engineer, RAG Engineer");
+      screen.getByPlaceholderText("e.g. AI Engineer")
+    ).toHaveValue("AI Engineer");
   });
 
-  it("calls onSubmit with parsed roles on form submit", () => {
+  it("calls onSubmit with role on form submit", () => {
     const onSubmit = vi.fn();
     render(
       <ApplicationForm
-        initial={makeApp({ roles: ["AI Engineer"] })}
+        initial={makeApp({ role: "AI Engineer" })}
         submitting={false}
         submitLabel="Save"
         onSubmit={onSubmit}
       />
     );
-    const rolesInput = screen.getByPlaceholderText("e.g. AI Engineer, RAG Engineer");
-    fireEvent.change(rolesInput, { target: { value: "AI Engineer, RAG Engineer" } });
+    const roleInput = screen.getByPlaceholderText("e.g. AI Engineer");
+    fireEvent.change(roleInput, { target: { value: "RAG Engineer" } });
     fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!);
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ rolesInput: "AI Engineer, RAG Engineer" })
+      expect.objectContaining({ role: "RAG Engineer" })
     );
   });
 
@@ -93,19 +73,19 @@ describe("ApplicationForm", () => {
     const onSubmit = vi.fn();
     render(
       <ApplicationForm
-        initial={makeApp({ roles: [] })}
+        initial={makeApp({ role: "" })}
         submitting={false}
         submitLabel="Save"
         onSubmit={onSubmit}
       />
     );
-    const rolesInput = screen.getByPlaceholderText("e.g. AI Engineer, RAG Engineer");
-    fireEvent.change(rolesInput, {
+    const roleInput = screen.getByPlaceholderText("e.g. AI Engineer");
+    fireEvent.change(roleInput, {
       target: { value: "LLM Inference Optimization Engineer" },
     });
     fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!);
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ rolesInput: "LLM Inference Optimization Engineer" })
+      expect.objectContaining({ role: "LLM Inference Optimization Engineer" })
     );
   });
 
