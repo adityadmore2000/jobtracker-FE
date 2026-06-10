@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchLiveKitToken } from "@/lib/api";
+import { fetchLiveKitToken, updateApplication, ConflictError } from "@/lib/api";
 
 describe("fetchLiveKitToken", () => {
   const originalFetch = globalThis.fetch;
@@ -75,5 +75,43 @@ describe("fetchLiveKitToken", () => {
   it("throws on non-2xx response", async () => {
     mockFetch(401, "Unauthorized");
     await expect(fetchLiveKitToken()).rejects.toThrow();
+  });
+});
+
+describe("ConflictError", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => { vi.clearAllMocks(); });
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  function mockFetch(status: number, body: unknown) {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(body),
+      text: () => Promise.resolve(typeof body === "string" ? body : JSON.stringify(body)),
+    });
+  }
+
+  it("updateApplication throws ConflictError on 409 with JSON detail", async () => {
+    mockFetch(409, { detail: "An application for Rockwell — AI Engineer already exists." });
+    await expect(updateApplication(1, { role: "AI Engineer" })).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("ConflictError message contains the backend detail", async () => {
+    mockFetch(409, { detail: "An application for Rockwell — AI Engineer already exists." });
+    try {
+      await updateApplication(1, { role: "AI Engineer" });
+    } catch (err) {
+      expect(err).toBeInstanceOf(ConflictError);
+      expect((err as ConflictError).message).toContain("AI Engineer");
+    }
+  });
+
+  it("updateApplication throws a generic Error on other 4xx responses", async () => {
+    mockFetch(400, "Bad Request");
+    const err = await updateApplication(1, { role: "X" }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(ConflictError);
   });
 });

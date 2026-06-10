@@ -38,9 +38,26 @@ export type DraftPatchPayload = {
   comments?: string;
 };
 
+export class ConflictError extends Error {
+  readonly status = 409;
+  constructor(message: string) {
+    super(message);
+    this.name = "ConflictError";
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 409) {
+      let detail = body;
+      try {
+        detail = JSON.parse(body)?.detail ?? body;
+      } catch {
+        // leave as raw text
+      }
+      throw new ConflictError(detail || `HTTP 409`);
+    }
     throw new Error(body || `HTTP ${res.status}`);
   }
   return res.json();

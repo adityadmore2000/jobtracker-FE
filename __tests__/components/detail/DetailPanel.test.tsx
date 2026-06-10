@@ -23,14 +23,19 @@ vi.mock("@/components/detail/ArchiveButton", () => ({
 }));
 
 // ── mock API helpers ─────────────────────────────────────────────────────────
-vi.mock("@/lib/api", () => ({
-  patchDraft: vi.fn(),
-  saveDraft: vi.fn(),
-  discardDraft: vi.fn(),
-  updateApplication: vi.fn(),
-}));
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    patchDraft: vi.fn(),
+    saveDraft: vi.fn(),
+    discardDraft: vi.fn(),
+    updateApplication: vi.fn(),
+  };
+});
 
 import * as api from "@/lib/api";
+import { ConflictError } from "@/lib/api";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const makeApp = (overrides?: Partial<Application>): Application => ({
@@ -368,5 +373,69 @@ describe("Regression", () => {
       />
     );
     expect(screen.getByText("Select an application to view details.")).toBeInTheDocument();
+  });
+});
+
+// ── Conflict (409) handling ──────────────────────────────────────────────────
+describe("Conflict handling", () => {
+  it("shows conflict message inline when updateApplication returns 409", async () => {
+    vi.mocked(api.updateApplication).mockRejectedValue(
+      new ConflictError("An application for Rockwell — AI Engineer already exists.")
+    );
+
+    render(<DetailPanel {...baseProps} application={makeApp()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await act(async () => {
+      fireEvent.submit(
+        screen.getByRole("button", { name: "Save Changes" }).closest("form")!
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("An application for Rockwell — AI Engineer already exists.")
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("edit form stays open after 409 conflict", async () => {
+    vi.mocked(api.updateApplication).mockRejectedValue(
+      new ConflictError("An application for Rockwell — AI Engineer already exists.")
+    );
+
+    render(<DetailPanel {...baseProps} application={makeApp()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await act(async () => {
+      fireEvent.submit(
+        screen.getByRole("button", { name: "Save Changes" }).closest("form")!
+      );
+    });
+
+    await waitFor(() => {
+      // Form remains open — Save Changes button still present
+      expect(screen.getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
+    });
+  });
+
+  it("draft save error shown inline when saveDraft fails", async () => {
+    vi.mocked(api.saveDraft).mockRejectedValue(new Error("Draft not found"));
+
+    const draftProps = {
+      ...baseProps,
+      activeDraft: makeDraft(),
+      draftId: "42",
+      selectedDraftId: "42",
+    };
+    render(<DetailPanel {...draftProps} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save Application" }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Draft not found")).toBeInTheDocument();
+    });
   });
 });
