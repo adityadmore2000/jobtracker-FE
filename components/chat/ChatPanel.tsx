@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import type { Application, ChatMessage, TranscriptContext, TranscriptResponse } from "@/lib/types";
+import type { Application, ChatMessage, PendingCommand, TranscriptContext, TranscriptResponse } from "@/lib/types";
 import { submitTranscript } from "@/lib/api";
 import { useSelection } from "@/lib/SelectionContext";
 import type { SelectedTrackerItem } from "@/lib/SelectionContext";
@@ -53,6 +53,8 @@ export default function ChatPanel({
   const [inputText, setInputText] = useState("");
   const [countdown, setCountdown] = useState<number | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // pending_command: echoed back to next request for clarification continuation
+  const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
 
   function append(...msgs: ChatMessage[]) {
     setMessages((prev) => [...prev, ...msgs]);
@@ -60,6 +62,16 @@ export default function ChatPanel({
 
   function handleResponse(response: TranscriptResponse, text: string) {
     const { status } = response;
+
+    // Clear pending_command on success, error, or explicit cancel
+    if (
+      status !== "clarification" &&
+      status !== "no_change" &&
+      status !== "error" &&
+      status !== "unsupported"
+    ) {
+      setPendingCommand(null);
+    }
 
     if (status === "draft_created" || status === "draft_updated") {
       onDraftIdChange(response.draft_id ?? draftId);
@@ -110,8 +122,46 @@ export default function ChatPanel({
       return;
     }
 
+    if (status === "note_added") {
+      const noteText = response.note ? `"${response.note.text}"` : "";
+      const msg = noteText ? `${response.message} ${noteText}` : response.message;
+      append(makeMessage("system", msg));
+      // If note was attached to a draft, refresh draft view
+      if (response.draft) {
+        onActiveDraftChange(response.draft);
+        if (response.draft_id) onDraftIdChange(response.draft_id);
+      }
+      onApplicationMutated();
+      return;
+    }
+
+    if (status === "application_archived" || status === "application_restored") {
+      append(makeMessage("system", response.message));
+      onApplicationMutated();
+      return;
+    }
+
+    if (status === "context_updated") {
+      // "update application for X" — set the active selected application context
+      if (response.application_id != null) {
+        setSelection({ kind: "application", applicationId: response.application_id });
+      }
+      append(makeMessage("system", response.message));
+      return;
+    }
+
     if (status === "clarification") {
+      // Store pending_command for next request
+      if (response.pending_command) {
+        setPendingCommand(response.pending_command);
+      }
       append(makeMessage("system", response.clarification_question || response.message));
+      return;
+    }
+
+    if (status === "unsupported") {
+      setPendingCommand(null);
+      append(makeMessage("system", response.message));
       return;
     }
 
@@ -128,6 +178,7 @@ export default function ChatPanel({
       active_draft: activeDraft ?? undefined,
       active_application_id: selectedApplicationId,
       recent_actions: recentActions,
+      pending_command: pendingCommand,
     };
 
     setSubmitting(true);

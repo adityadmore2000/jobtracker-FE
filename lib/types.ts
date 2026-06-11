@@ -24,6 +24,12 @@ export type ApplicationNote = {
   created_at: string;
 };
 
+export type TranscriptNote = {
+  id: number;
+  text: string;
+  created_at: string | null;
+};
+
 export type TimelineEvent = {
   id: number;
   event_type: string;
@@ -43,6 +49,7 @@ export type TranscriptContext = {
   draft_id?: string;
   active_application_id?: number | null;
   recent_actions?: string[];
+  pending_command?: PendingCommand | null;
 };
 
 export type ApplicationChangeDraft = {
@@ -54,6 +61,18 @@ export type ApplicationChangeDraft = {
   changed_fields: string[];
   created_at: string;
   updated_at: string;
+};
+
+export type PendingCommand = {
+  operation: string;
+  target: {
+    company: string | null;
+    role: string | null;
+    application_id: number | null;
+  };
+  changes: Record<string, unknown>;
+  note: string | null;
+  missing_field: "company" | "role" | null;
 };
 
 export type TranscriptStatus =
@@ -68,7 +87,12 @@ export type TranscriptStatus =
   | "changes_discarded"
   | "clarification"
   | "no_change"
-  | "error";
+  | "error"
+  | "note_added"
+  | "application_archived"
+  | "application_restored"
+  | "context_updated"
+  | "unsupported";
 
 export type TranscriptResponse = {
   status: TranscriptStatus;
@@ -80,6 +104,8 @@ export type TranscriptResponse = {
   pending_changes: ApplicationChangeDraft | null;
   warnings: string[];
   clarification_question: string | null;
+  note?: TranscriptNote | null;
+  pending_command?: PendingCommand | null;
 };
 
 export type LiveKitTokenResponse = {
