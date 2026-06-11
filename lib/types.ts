@@ -42,6 +42,8 @@ export type ChatMessage = {
   role: "user" | "system" | "draft";
   text: string;
   timestamp: string;
+  // Clickable rephrasing chips offered by the semantic extractor.
+  suggestions?: string[];
 };
 
 export type TranscriptContext = {
@@ -106,6 +108,8 @@ export type TranscriptResponse = {
   clarification_question: string | null;
   note?: TranscriptNote | null;
   pending_command?: PendingCommand | null;
+  // Single-call semantic extractor: safe rephrasings rendered as clickable chips.
+  suggested_phrasings?: string[];
 };
 
 export type LiveKitTokenResponse = {

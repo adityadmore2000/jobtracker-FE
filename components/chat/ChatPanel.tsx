@@ -23,8 +23,8 @@ function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function makeMessage(role: ChatMessage["role"], text: string): ChatMessage {
-  return { id: makeId(), role, text, timestamp: new Date().toISOString() };
+function makeMessage(role: ChatMessage["role"], text: string, suggestions?: string[]): ChatMessage {
+  return { id: makeId(), role, text, timestamp: new Date().toISOString(), suggestions };
 }
 
 function buildDraftSummary(draft?: Partial<Application>): string {
@@ -161,7 +161,10 @@ export default function ChatPanel({
 
     if (status === "unsupported") {
       setPendingCommand(null);
-      append(makeMessage("system", response.message));
+      const message = response.clarification_question
+        ? `${response.message}\nDid you mean: ${response.clarification_question}`
+        : response.message;
+      append(makeMessage("system", message, response.suggested_phrasings ?? undefined));
       return;
     }
 
@@ -227,7 +230,13 @@ export default function ChatPanel({
         <p className="text-xs text-muted-foreground">Type naturally. Your changes stay local.</p>
       </div>
 
-      <ChatFeed messages={messages} />
+      <ChatFeed
+        messages={messages}
+        onSuggestionClick={(phrase) => {
+          // Clicking a chip is explicit user confirmation: resend as a new transcript.
+          if (!submitting) void handleSubmit(phrase);
+        }}
+      />
 
       <ChatInput
         value={inputText}

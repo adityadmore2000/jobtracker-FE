@@ -6,6 +6,7 @@ import ChatMessage from "./ChatMessage";
 
 type ChatFeedProps = {
   messages: ChatMessageType[];
+  onSuggestionClick?: (phrase: string) => void;
 };
 
 function IntroCard() {
@@ -28,7 +29,7 @@ function IntroCard() {
   );
 }
 
-export default function ChatFeed({ messages }: ChatFeedProps) {
+export default function ChatFeed({ messages, onSuggestionClick }: ChatFeedProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,7 +43,7 @@ export default function ChatFeed({ messages }: ChatFeedProps) {
       ) : (
         <div className="flex flex-col gap-3">
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} />
+            <ChatMessage key={msg.id} message={msg} onSuggestionClick={onSuggestionClick} />
           ))}
         </div>
       )}
