@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 :root {
   color: #17212b;
   background: #f4f6f8;
@@ -190,6 +192,43 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.voicePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.voiceStatusText {
+  margin: 0;
+}
+
+.voiceActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.voiceTranscriptBox {
+  background: #f7fafc;
+  border: 1px solid #d8e0e7;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.voiceTranscriptBox span {
+  color: #394858;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.voiceTranscriptBox p {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .transcriptInput {
