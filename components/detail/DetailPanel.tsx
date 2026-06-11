@@ -10,7 +10,7 @@ import ApplicationForm, { type ApplicationFormValues } from "./ApplicationForm";
 import {
   patchDraft,
   saveDraft,
-  discardDraft,
+  deleteDraft,
   updateApplication,
   applyApplicationChangeDraft,
   discardApplicationChangeDraft,
@@ -26,6 +26,10 @@ type DetailPanelProps = {
   activeDraft: Partial<Application> | null;
   draftId: string | null;
   selectedDraftId: string | null;
+  // Set when a direct URL visit addressed a missing or wrong-type record.
+  routeNotFound?: string | null;
+  // True while a direct /drafts/{id} visit is still fetching the draft.
+  routeLoading?: boolean;
   onDraftSaved: (savedApp: Application) => void;
   onDraftDiscarded: () => void;
   onDraftPatched: (updated: Application) => void;
@@ -51,6 +55,8 @@ export default function DetailPanel({
   activeDraft,
   draftId,
   selectedDraftId,
+  routeNotFound = null,
+  routeLoading = false,
   onDraftSaved,
   onDraftDiscarded,
   onDraftPatched,
@@ -62,6 +68,30 @@ export default function DetailPanel({
   const [error, setError] = useState<string | null>(null);
 
   const isDraftSelected = selectedDraftId !== null && selectedDraftId === draftId;
+
+  // Direct URL visit to a missing / wrong-type record. Surface before any
+  // selection-based mode so /drafts/999999 and /drafts/{saved_id} are explicit.
+  if (routeNotFound !== null) {
+    return (
+      <div className="flex h-56 shrink-0 flex-col overflow-hidden border-t">
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-muted-foreground">{routeNotFound}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Direct /drafts/{id} visit still resolving — show a loading placeholder
+  // rather than briefly flashing the "no selection" state.
+  if (routeLoading && activeDraft === null) {
+    return (
+      <div className="flex h-56 shrink-0 flex-col overflow-hidden border-t">
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        </div>
+      </div>
+    );
+  }
 
   // Mode E: pending changes review
   if (selectedChangeDraft !== null) {
@@ -225,7 +255,7 @@ export default function DetailPanel({
       setError(null);
       setSubmitting(true);
       try {
-        await discardDraft(draftId);
+        await deleteDraft(draftId);
         onDraftDiscarded();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to discard draft");

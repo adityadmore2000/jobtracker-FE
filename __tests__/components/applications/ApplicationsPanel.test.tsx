@@ -13,7 +13,7 @@ vi.mock("@/lib/api", () => ({
   fetchTimeline: vi.fn().mockResolvedValue([]),
   patchDraft: vi.fn(),
   saveDraft: vi.fn(),
-  discardDraft: vi.fn(),
+  deleteDraft: vi.fn(),
   updateApplication: vi.fn(),
 }));
 
@@ -47,25 +47,45 @@ const archivedApp = makeApp(10, { company: "Archived Co", archived_at: "2024-06-
 
 type RenderPanelOpts = {
   activeDraft?: Partial<Application> | null;
-  draftId?: string | null;
+  routeApplicationId?: number | null;
+  routeDraftId?: string | null;
+  routeNotFound?: string | null;
 };
 
-function renderPanel({ activeDraft = null, draftId = null }: RenderPanelOpts = {}) {
+function renderPanel({
+  activeDraft = null,
+  routeApplicationId = null,
+  routeDraftId = null,
+  routeNotFound = null,
+}: RenderPanelOpts = {}) {
   const ref = createRef<ApplicationsPanelHandle>();
   const onActiveDraftChange = vi.fn();
-  const onDraftIdChange = vi.fn();
+  const onNavigateApplication = vi.fn();
+  const onNavigateDraft = vi.fn();
+  const onNavigateOverview = vi.fn();
   const result = render(
     <SelectionProvider>
       <ApplicationsPanel
         ref={ref}
         activeDraft={activeDraft}
-        draftId={draftId}
+        routeApplicationId={routeApplicationId}
+        routeDraftId={routeDraftId}
+        routeNotFound={routeNotFound}
         onActiveDraftChange={onActiveDraftChange}
-        onDraftIdChange={onDraftIdChange}
+        onNavigateApplication={onNavigateApplication}
+        onNavigateDraft={onNavigateDraft}
+        onNavigateOverview={onNavigateOverview}
       />
     </SelectionProvider>
   );
-  return { ref, onActiveDraftChange, onDraftIdChange, ...result };
+  return {
+    ref,
+    onActiveDraftChange,
+    onNavigateApplication,
+    onNavigateDraft,
+    onNavigateOverview,
+    ...result,
+  };
 }
 
 beforeEach(() => {
@@ -146,57 +166,59 @@ describe("ApplicationsPanel — data fetching", () => {
   });
 });
 
-describe("ApplicationsPanel — saved-row selection", () => {
-  it("clicking a saved row updates selection (blue highlight)", async () => {
-    renderPanel();
+describe("ApplicationsPanel — saved-row navigation", () => {
+  it("clicking a saved row navigates to /applications/{id}", async () => {
+    const { onNavigateApplication } = renderPanel();
     await waitFor(() => screen.getByText("Company 1"));
 
     fireEvent.click(screen.getByText("Company 1").closest("tr")!);
 
-    await waitFor(() => {
-      const row = screen.getByText("Company 1").closest("tr")!;
-      expect(row.className).toContain("bg-blue-50");
-    });
+    expect(onNavigateApplication).toHaveBeenCalledWith(1);
   });
 
-  it("lower detail empty state renders when no row is selected", async () => {
+  it("clicking an archived row navigates to /applications/{id}", async () => {
+    const { onNavigateApplication } = renderPanel();
+    await waitFor(() => screen.getByText("Company 1"));
+    fireEvent.click(screen.getByText(/Archived/));
+    await waitFor(() => screen.getByText("Archived Co"));
+
+    fireEvent.click(screen.getByText("Archived Co").closest("tr")!);
+
+    expect(onNavigateApplication).toHaveBeenCalledWith(10);
+  });
+
+  it("lower detail empty state renders when no row is route-selected", async () => {
     renderPanel();
     await waitFor(() => screen.getByText("Company 1"));
     expect(screen.getByText("Select an application to view details.")).toBeInTheDocument();
   });
 
-  it("clicking an active saved row renders its company and role in the detail header", async () => {
-    renderPanel();
-    await waitFor(() => screen.getByText("Company 1"));
-
-    fireEvent.click(screen.getByText("Company 1").closest("tr")!);
-
+  it("route-selected saved application renders its header (direct-link refresh)", async () => {
+    renderPanel({ routeApplicationId: 1 });
     await waitFor(() =>
       expect(screen.getByText("Company 1 — Role 1")).toBeInTheDocument()
     );
   });
 
-  it("clicking an archived saved row renders Restore in detail header", async () => {
-    mockFetchApplications.mockResolvedValue([]);
-    mockFetchArchivedApplications.mockResolvedValue([archivedApp]);
-    renderPanel();
-
-    await waitFor(() =>
-      expect(screen.queryByText("Loading applications…")).not.toBeInTheDocument()
-    );
-
-    fireEvent.click(screen.getByText(/Archived/));
-    await waitFor(() => screen.getByText("Archived Co"));
-    fireEvent.click(screen.getByText("Archived Co").closest("tr")!);
-
+  it("route-selected archived application renders Restore", async () => {
+    renderPanel({ routeApplicationId: 10 });
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument()
     );
   });
+
+  it("route-selected saved row is highlighted", async () => {
+    renderPanel({ routeApplicationId: 1 });
+    await waitFor(() => {
+      const row = screen.getByText("Company 1").closest("tr")!;
+      expect(row.className).toContain("bg-blue-50");
+    });
+  });
 });
 
-describe("ApplicationsPanel — draft selection", () => {
+describe("ApplicationsPanel — draft navigation & detail", () => {
   const draft: Partial<Application> = {
+    id: 42,
     company: "Draft Co",
     role: "Draft Role",
     employment_types: [],
@@ -210,57 +232,43 @@ describe("ApplicationsPanel — draft selection", () => {
     engaged_days: 0,
   };
 
-  it("active draft row renders in the table", async () => {
-    renderPanel({ activeDraft: draft, draftId: "42" });
-    await waitFor(() => screen.getByText("Draft Co"));
-    expect(screen.getByText("Draft Co")).toBeInTheDocument();
+  beforeEach(() => {
+    vi.mocked(api.fetchDrafts).mockResolvedValue([makeApp(42, { company: "Draft Co", role: "Draft Role", is_draft: true })]);
   });
 
-  it("clicking draft row opens draft-edit form in DetailPanel", async () => {
-    renderPanel({ activeDraft: draft, draftId: "42" });
+  it("clicking a draft row navigates to /drafts/{id}", async () => {
+    const { onNavigateDraft } = renderPanel();
+    fireEvent.click(screen.getByText(/Drafts/));
     await waitFor(() => screen.getByText("Draft Co"));
 
     fireEvent.click(screen.getByText("Draft Co").closest("tr")!);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save Draft Changes" })).toBeInTheDocument();
-    });
+    expect(onNavigateDraft).toHaveBeenCalledWith("42");
   });
 
-  it("clicking Edit draft pencil opens draft-edit form", async () => {
-    renderPanel({ activeDraft: draft, draftId: "42" });
-    await waitFor(() => screen.getByText("Draft Co"));
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
-
+  it("route-selected draft opens the draft-edit form", async () => {
+    renderPanel({ activeDraft: draft, routeDraftId: "42" });
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save Draft Changes" })).toBeInTheDocument();
     });
   });
 
   it("draft edit form shows Save Application and Discard Draft buttons", async () => {
-    renderPanel({ activeDraft: draft, draftId: "42" });
-    await waitFor(() => screen.getByText("Draft Co"));
-
-    fireEvent.click(screen.getByText("Draft Co").closest("tr")!);
-
+    renderPanel({ activeDraft: draft, routeDraftId: "42" });
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save Application" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Discard Draft" })).toBeInTheDocument();
     });
   });
 
-  it("Save Application button calls saveDraft and clears draft state", async () => {
+  it("Save Application calls saveDraft then navigates to the saved application", async () => {
     const savedApp = makeApp(99, { company: "Draft Co" });
     vi.mocked(api.saveDraft).mockResolvedValue(savedApp);
 
-    const { onActiveDraftChange, onDraftIdChange } = renderPanel({
+    const { onActiveDraftChange, onNavigateApplication } = renderPanel({
       activeDraft: draft,
-      draftId: "42",
+      routeDraftId: "42",
     });
-    await waitFor(() => screen.getByText("Draft Co"));
-
-    fireEvent.click(screen.getByText("Draft Co").closest("tr")!);
     await waitFor(() => screen.getByRole("button", { name: "Save Application" }));
 
     await act(async () => {
@@ -270,20 +278,17 @@ describe("ApplicationsPanel — draft selection", () => {
     await waitFor(() => {
       expect(vi.mocked(api.saveDraft)).toHaveBeenCalledWith("42");
       expect(onActiveDraftChange).toHaveBeenCalledWith(null);
-      expect(onDraftIdChange).toHaveBeenCalledWith(null);
+      expect(onNavigateApplication).toHaveBeenCalledWith(99);
     });
   });
 
-  it("Discard Draft button calls discardDraft and clears draft state", async () => {
-    vi.mocked(api.discardDraft).mockResolvedValue(undefined);
+  it("Discard Draft calls deleteDraft then navigates to overview", async () => {
+    vi.mocked(api.deleteDraft).mockResolvedValue(undefined);
 
-    const { onActiveDraftChange, onDraftIdChange } = renderPanel({
+    const { onActiveDraftChange, onNavigateOverview } = renderPanel({
       activeDraft: draft,
-      draftId: "42",
+      routeDraftId: "42",
     });
-    await waitFor(() => screen.getByText("Draft Co"));
-
-    fireEvent.click(screen.getByText("Draft Co").closest("tr")!);
     await waitFor(() => screen.getByRole("button", { name: "Discard Draft" }));
 
     await act(async () => {
@@ -291,36 +296,18 @@ describe("ApplicationsPanel — draft selection", () => {
     });
 
     await waitFor(() => {
-      expect(vi.mocked(api.discardDraft)).toHaveBeenCalledWith("42");
+      expect(vi.mocked(api.deleteDraft)).toHaveBeenCalledWith("42");
       expect(onActiveDraftChange).toHaveBeenCalledWith(null);
-      expect(onDraftIdChange).toHaveBeenCalledWith(null);
+      expect(onNavigateOverview).toHaveBeenCalled();
     });
   });
 });
 
-describe("ApplicationsPanel — regression", () => {
-  it("saved-row selection still works after draft row is added", async () => {
-    const draft: Partial<Application> = { company: "Draft Co", role: "Draft Role" };
-    renderPanel({ activeDraft: draft, draftId: "42" });
-
-    await waitFor(() => screen.getByText("Company 1"));
-
-    fireEvent.click(screen.getByText("Company 1").closest("tr")!);
+describe("ApplicationsPanel — not-found state", () => {
+  it("renders the route not-found message in the detail panel", async () => {
+    renderPanel({ routeNotFound: "Draft not found" });
     await waitFor(() =>
-      expect(screen.getByText("Company 1 — Role 1")).toBeInTheDocument()
+      expect(screen.getByText("Draft not found")).toBeInTheDocument()
     );
-  });
-
-  it("draft row still renders as amber when a saved row is also selected", async () => {
-    const draft: Partial<Application> = { company: "Draft Co", role: "Draft Role" };
-    renderPanel({ activeDraft: draft, draftId: "42" });
-
-    await waitFor(() => screen.getByText("Company 1"));
-    fireEvent.click(screen.getByText("Company 1").closest("tr")!);
-
-    await waitFor(() => {
-      const draftRow = screen.getByText("Draft Co").closest("tr")!;
-      expect(draftRow.className).toContain("bg-amber-50");
-    });
   });
 });

@@ -10,7 +10,7 @@ import type {
   TranscriptContext,
   TranscriptResponse,
 } from "@/lib/types";
-import { discardDraft, restoreApplication, submitTranscript } from "@/lib/api";
+import { deleteDraft, restoreApplication, submitTranscript } from "@/lib/api";
 import { useSelection } from "@/lib/SelectionContext";
 import type { SelectedTrackerItem } from "@/lib/SelectionContext";
 import ChatFeed from "./ChatFeed";
@@ -20,7 +20,10 @@ type ChatPanelProps = {
   activeDraft: Partial<Application> | null;
   draftId: string | null;
   onActiveDraftChange: (draft: Partial<Application> | null) => void;
-  onDraftIdChange: (draftId: string | null) => void;
+  // URL is canonical: navigation replaces direct draftId/selection mutation.
+  onNavigateDraft: (id: string) => void;
+  onNavigateApplication: (id: number) => void;
+  onNavigateOverview: (replace?: boolean) => void;
   onApplicationMutated: () => void;
 };
 
@@ -78,7 +81,9 @@ export default function ChatPanel({
   activeDraft,
   draftId,
   onActiveDraftChange,
-  onDraftIdChange,
+  onNavigateDraft,
+  onNavigateApplication,
+  onNavigateOverview,
   onApplicationMutated,
 }: ChatPanelProps) {
   const { selectedApplicationId, setSelection } = useSelection();
@@ -101,19 +106,19 @@ export default function ChatPanel({
   async function handleAction(action: ChatMessageAction): Promise<void> {
     if (action.kind === "open_draft" && action.draftId != null) {
       const id = String(action.draftId);
+      // Seed activeDraft so the editor shows immediately; AppShell re-fetches the
+      // authoritative draft on the route change.
       const draftRow = lastCollisionDraftRef.current;
       if (draftRow) onActiveDraftChange(draftRow);
-      onDraftIdChange(id);
-      setSelection({ kind: "draft", draftId: id });
+      onNavigateDraft(id);
       append(makeMessage("system", "Opened the existing draft."));
       return;
     }
     if (action.kind === "discard_draft" && action.draftId != null) {
       try {
-        await discardDraft(String(action.draftId));
+        await deleteDraft(String(action.draftId));
         onActiveDraftChange(null);
-        onDraftIdChange(null);
-        setSelection(null);
+        onNavigateOverview();
         append(makeMessage("system", "Draft discarded. You can create it again now."));
         onApplicationMutated();
       } catch {
@@ -125,14 +130,14 @@ export default function ChatPanel({
       (action.kind === "open_application" || action.kind === "open_archived_application") &&
       action.applicationId != null
     ) {
-      setSelection({ kind: "application", applicationId: action.applicationId });
+      onNavigateApplication(action.applicationId);
       append(makeMessage("system", "Opened the existing application."));
       return;
     }
     if (action.kind === "restore_application" && action.applicationId != null) {
       try {
         await restoreApplication(action.applicationId);
-        setSelection({ kind: "application", applicationId: action.applicationId });
+        onNavigateApplication(action.applicationId);
         append(makeMessage("system", "Application restored."));
         onApplicationMutated();
       } catch {
@@ -168,26 +173,35 @@ export default function ChatPanel({
     }
 
     if (status === "draft_created" || status === "draft_updated") {
-      onDraftIdChange(response.draft_id ?? draftId);
       onActiveDraftChange(response.draft ?? activeDraft);
       append(makeMessage("draft", buildDraftSummary(response.draft ?? activeDraft ?? undefined)));
       append(makeMessage("system", response.message));
+      // Make the new/updated draft URL-addressable. Only navigate when the id
+      // actually changes route, so an in-place draft edit doesn't re-push.
+      const newDraftId = response.draft_id ?? draftId;
+      if (newDraftId != null && newDraftId !== draftId) {
+        onNavigateDraft(newDraftId);
+      }
       return;
     }
 
     if (status === "saved") {
-      onDraftIdChange(null);
       onActiveDraftChange(null);
       append(makeMessage("system", response.message));
       onApplicationMutated();
+      if (response.application_id != null) {
+        onNavigateApplication(response.application_id);
+      } else {
+        onNavigateOverview();
+      }
       return;
     }
 
     if (status === "discarded") {
-      onDraftIdChange(null);
       onActiveDraftChange(null);
       append(makeMessage("system", response.message));
       onApplicationMutated();
+      onNavigateOverview();
       return;
     }
 
@@ -223,7 +237,9 @@ export default function ChatPanel({
       // If note was attached to a draft, refresh draft view
       if (response.draft) {
         onActiveDraftChange(response.draft);
-        if (response.draft_id) onDraftIdChange(response.draft_id);
+        if (response.draft_id != null && response.draft_id !== draftId) {
+          onNavigateDraft(response.draft_id);
+        }
       }
       onApplicationMutated();
       return;
@@ -236,9 +252,10 @@ export default function ChatPanel({
     }
 
     if (status === "context_updated") {
-      // "update application for X" — set the active selected application context
+      // "update application for X" — make the targeted application the canonical
+      // selection by navigating to its detail route.
       if (response.application_id != null) {
-        setSelection({ kind: "application", applicationId: response.application_id });
+        onNavigateApplication(response.application_id);
       }
       append(makeMessage("system", response.message));
       return;

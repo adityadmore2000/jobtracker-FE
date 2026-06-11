@@ -7,7 +7,7 @@ import type { Application, TranscriptResponse } from "@/lib/types";
 vi.mock("@/lib/api", () => ({
   submitTranscript: vi.fn(),
   fetchLiveKitToken: vi.fn(),
-  discardDraft: vi.fn(),
+  deleteDraft: vi.fn(),
   restoreApplication: vi.fn(),
 }));
 
@@ -39,7 +39,9 @@ const defaultProps = {
   activeDraft: null,
   draftId: null,
   onActiveDraftChange: vi.fn(),
-  onDraftIdChange: vi.fn(),
+  onNavigateDraft: vi.fn(),
+  onNavigateApplication: vi.fn(),
+  onNavigateOverview: vi.fn(),
   onApplicationMutated: vi.fn(),
 };
 
@@ -105,8 +107,8 @@ describe("ChatPanel", () => {
     );
   });
 
-  it("draft_created updates draft ID and active draft callbacks", async () => {
-    const onDraftIdChange = vi.fn();
+  it("draft_created navigates to /drafts/{id} and sets active draft", async () => {
+    const onNavigateDraft = vi.fn();
     const onActiveDraftChange = vi.fn();
     const newDraft: Partial<Application> = { company: "Neilsoft", role: "AI Engineer" };
     mockSubmit.mockResolvedValue(makeResponse({
@@ -115,9 +117,9 @@ describe("ChatPanel", () => {
       draft_id: "new-id",
       message: "Draft created. Review it and save when ready.",
     }));
-    renderPanel({ onDraftIdChange, onActiveDraftChange });
+    renderPanel({ onNavigateDraft, onActiveDraftChange });
     await act(async () => { await submitText("Applied at Neilsoft"); });
-    expect(onDraftIdChange).toHaveBeenCalledWith("new-id");
+    expect(onNavigateDraft).toHaveBeenCalledWith("new-id");
     expect(onActiveDraftChange).toHaveBeenCalledWith(newDraft);
   });
 
@@ -147,8 +149,8 @@ describe("ChatPanel", () => {
     expect(onApplicationMutated).not.toHaveBeenCalled();
   });
 
-  it("draft_updated updates draft callbacks", async () => {
-    const onDraftIdChange = vi.fn();
+  it("draft_updated sets active draft and navigates when the id changes", async () => {
+    const onNavigateDraft = vi.fn();
     const onActiveDraftChange = vi.fn();
     const updatedDraft: Partial<Application> = { company: "Updated Co", role: "ML Engineer" };
     mockSubmit.mockResolvedValue(makeResponse({
@@ -157,10 +159,24 @@ describe("ChatPanel", () => {
       draft_id: "upd-id",
       message: "Draft updated.",
     }));
-    renderPanel({ onDraftIdChange, onActiveDraftChange });
+    renderPanel({ onNavigateDraft, onActiveDraftChange });
     await act(async () => { await submitText("update draft"); });
-    expect(onDraftIdChange).toHaveBeenCalledWith("upd-id");
+    expect(onNavigateDraft).toHaveBeenCalledWith("upd-id");
     expect(onActiveDraftChange).toHaveBeenCalledWith(updatedDraft);
+  });
+
+  it("draft_updated does not re-navigate when already on that draft route", async () => {
+    const onNavigateDraft = vi.fn();
+    const updatedDraft: Partial<Application> = { company: "Same Co", role: "ML Engineer" };
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_updated",
+      draft: updatedDraft as Application,
+      draft_id: "same-id",
+      message: "Draft updated.",
+    }));
+    renderPanel({ onNavigateDraft, draftId: "same-id" });
+    await act(async () => { await submitText("update draft"); });
+    expect(onNavigateDraft).not.toHaveBeenCalled();
   });
 
   it("draft_updated does not call table refresh", async () => {
@@ -176,14 +192,16 @@ describe("ChatPanel", () => {
     expect(onApplicationMutated).not.toHaveBeenCalled();
   });
 
-  it("saved clears draft callbacks", async () => {
-    const onDraftIdChange = vi.fn();
+  it("saved clears active draft and navigates to the saved application", async () => {
+    const onNavigateApplication = vi.fn();
     const onActiveDraftChange = vi.fn();
-    mockSubmit.mockResolvedValue(makeResponse({ status: "saved", message: "Application saved." }));
-    renderPanel({ onDraftIdChange, onActiveDraftChange });
+    mockSubmit.mockResolvedValue(
+      makeResponse({ status: "saved", message: "Application saved.", application_id: 77 })
+    );
+    renderPanel({ onNavigateApplication, onActiveDraftChange });
     await act(async () => { await submitText("save it"); });
-    expect(onDraftIdChange).toHaveBeenCalledWith(null);
     expect(onActiveDraftChange).toHaveBeenCalledWith(null);
+    expect(onNavigateApplication).toHaveBeenCalledWith(77);
   });
 
   it("saved calls table refresh", async () => {
@@ -194,14 +212,14 @@ describe("ChatPanel", () => {
     expect(onApplicationMutated).toHaveBeenCalled();
   });
 
-  it("discarded clears draft callbacks", async () => {
-    const onDraftIdChange = vi.fn();
+  it("discarded clears active draft and navigates to overview", async () => {
+    const onNavigateOverview = vi.fn();
     const onActiveDraftChange = vi.fn();
     mockSubmit.mockResolvedValue(makeResponse({ status: "discarded", message: "Draft discarded." }));
-    renderPanel({ onDraftIdChange, onActiveDraftChange });
+    renderPanel({ onNavigateOverview, onActiveDraftChange });
     await act(async () => { await submitText("discard"); });
-    expect(onDraftIdChange).toHaveBeenCalledWith(null);
     expect(onActiveDraftChange).toHaveBeenCalledWith(null);
+    expect(onNavigateOverview).toHaveBeenCalled();
   });
 
   it("discarded calls table refresh", async () => {
@@ -296,9 +314,9 @@ describe("ChatPanel", () => {
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("voice text");
   });
 
-  it("draft_created pinned draft row becomes renderable", async () => {
+  it("draft_created seeds active draft and navigates to its route", async () => {
     const onActiveDraftChange = vi.fn();
-    const onDraftIdChange = vi.fn();
+    const onNavigateDraft = vi.fn();
     const newDraft: Partial<Application> = {
       company: "Neilsoft",
       role: "AI Engineer",
@@ -309,10 +327,10 @@ describe("ChatPanel", () => {
       draft_id: "42",
       message: "Draft created. Review it and save when ready.",
     }));
-    renderPanel({ onActiveDraftChange, onDraftIdChange });
+    renderPanel({ onActiveDraftChange, onNavigateDraft });
     await act(async () => { await submitText("Applied for AI Engineer at Neilsoft"); });
     expect(onActiveDraftChange).toHaveBeenCalledWith(newDraft);
-    expect(onDraftIdChange).toHaveBeenCalledWith("42");
+    expect(onNavigateDraft).toHaveBeenCalledWith("42");
   });
 });
 
@@ -433,56 +451,59 @@ describe("pending_changes status handling", () => {
     });
   });
 
-  it("clicking Open existing draft populates draft state", async () => {
+  it("clicking Open existing draft navigates to /drafts/{id}", async () => {
     const onActiveDraftChange = vi.fn();
-    const onDraftIdChange = vi.fn();
+    const onNavigateDraft = vi.fn();
     mockSubmit.mockResolvedValue(makeResponse({
       status: "draft_updated",
       message: "A draft already exists.",
       draft: draftRow,
       collision: { kind: "draft", draft_id: 33, application_id: null, company: "Aiden AI", role: "AI Engineer", archived: false },
     }));
-    renderPanel({ onActiveDraftChange, onDraftIdChange });
+    renderPanel({ onActiveDraftChange, onNavigateDraft });
     await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
     const btn = await screen.findByRole("button", { name: "Open existing draft" });
     await act(async () => { fireEvent.click(btn); });
-    expect(onDraftIdChange).toHaveBeenCalledWith("33");
+    expect(onNavigateDraft).toHaveBeenCalledWith("33");
     expect(onActiveDraftChange).toHaveBeenCalledWith(draftRow);
   });
 
-  it("clicking Discard draft calls discardDraft and mutates", async () => {
+  it("clicking Discard draft calls deleteDraft, navigates to overview, and mutates", async () => {
     const onApplicationMutated = vi.fn();
-    vi.mocked(api.discardDraft).mockResolvedValue(undefined);
+    const onNavigateOverview = vi.fn();
+    vi.mocked(api.deleteDraft).mockResolvedValue(undefined);
     mockSubmit.mockResolvedValue(makeResponse({
       status: "draft_updated",
       message: "A draft already exists.",
       draft: draftRow,
       collision: { kind: "draft", draft_id: 33, application_id: null, company: "Aiden AI", role: "AI Engineer", archived: false },
     }));
-    renderPanel({ onApplicationMutated });
+    renderPanel({ onApplicationMutated, onNavigateOverview });
     await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
     const btn = await screen.findByRole("button", { name: "Discard draft" });
     await act(async () => { fireEvent.click(btn); });
     await waitFor(() => {
-      expect(api.discardDraft).toHaveBeenCalledWith("33");
+      expect(api.deleteDraft).toHaveBeenCalledWith("33");
+      expect(onNavigateOverview).toHaveBeenCalled();
       expect(onApplicationMutated).toHaveBeenCalled();
     });
   });
 
-  it("active collision renders Open application", async () => {
+  it("active collision Open application navigates to /applications/{id}", async () => {
+    const onNavigateApplication = vi.fn();
     mockSubmit.mockResolvedValue(makeResponse({
       status: "no_change",
       message: "An application already exists for Aiden AI · AI Engineer.",
       collision: { kind: "active_application", draft_id: null, application_id: 42, company: "Aiden AI", role: "AI Engineer", archived: false },
     }));
-    renderPanel();
+    renderPanel({ onNavigateApplication });
     await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Open application" })).toBeTruthy();
-    });
+    const btn = await screen.findByRole("button", { name: "Open application" });
+    await act(async () => { fireEvent.click(btn); });
+    expect(onNavigateApplication).toHaveBeenCalledWith(42);
   });
 
-  it("archived collision renders Restore application", async () => {
+  it("archived collision renders Restore + Open archived application", async () => {
     mockSubmit.mockResolvedValue(makeResponse({
       status: "updated",
       message: "Existing archived application restored.",
@@ -493,6 +514,38 @@ describe("pending_changes status handling", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Restore application" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Open archived application" })).toBeTruthy();
+    });
+  });
+
+  it("archived collision Open archived application navigates to /applications/{id}", async () => {
+    const onNavigateApplication = vi.fn();
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "updated",
+      message: "Existing archived application.",
+      collision: { kind: "archived_application", draft_id: null, application_id: 42, company: "Aiden AI", role: "AI Engineer", archived: true },
+    }));
+    renderPanel({ onNavigateApplication });
+    await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
+    const btn = await screen.findByRole("button", { name: "Open archived application" });
+    await act(async () => { fireEvent.click(btn); });
+    expect(onNavigateApplication).toHaveBeenCalledWith(42);
+  });
+
+  it("archived collision Restore restores then navigates to /applications/{id}", async () => {
+    const onNavigateApplication = vi.fn();
+    vi.mocked(api.restoreApplication).mockResolvedValue(undefined);
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "updated",
+      message: "Existing archived application.",
+      collision: { kind: "archived_application", draft_id: null, application_id: 42, company: "Aiden AI", role: "AI Engineer", archived: true },
+    }));
+    renderPanel({ onNavigateApplication });
+    await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
+    const btn = await screen.findByRole("button", { name: "Restore application" });
+    await act(async () => { fireEvent.click(btn); });
+    await waitFor(() => {
+      expect(api.restoreApplication).toHaveBeenCalledWith(42);
+      expect(onNavigateApplication).toHaveBeenCalledWith(42);
     });
   });
 });

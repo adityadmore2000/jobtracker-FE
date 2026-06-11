@@ -13,13 +13,32 @@ export type ApplicationsPanelHandle = {
 
 type ApplicationsPanelProps = {
   activeDraft: Partial<Application> | null;
-  draftId: string | null;
+  // URL-canonical identity.
+  routeApplicationId: number | null;
+  routeDraftId: string | null;
+  routeNotFound: string | null;
+  routeLoading?: boolean;
   onActiveDraftChange: (draft: Partial<Application> | null) => void;
-  onDraftIdChange: (draftId: string | null) => void;
+  onNavigateApplication: (id: number) => void;
+  onNavigateDraft: (id: string) => void;
+  onNavigateOverview: (replace?: boolean) => void;
 };
 
 const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelProps>(
-  function ApplicationsPanel({ activeDraft, draftId, onActiveDraftChange, onDraftIdChange }, ref) {
+  function ApplicationsPanel(
+    {
+      activeDraft,
+      routeApplicationId,
+      routeDraftId,
+      routeNotFound,
+      routeLoading = false,
+      onActiveDraftChange,
+      onNavigateApplication,
+      onNavigateDraft,
+      onNavigateOverview,
+    },
+    ref
+  ) {
     const [applications, setApplications] = useState<Application[]>([]);
     const [drafts, setDrafts] = useState<Application[]>([]);
     const [archived, setArchived] = useState<Application[]>([]);
@@ -28,11 +47,12 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
     const [error, setError] = useState<string | null>(null);
     const [pendingChangeDrafts, setPendingChangeDrafts] = useState<Map<number, ApplicationChangeDraft>>(new Map());
 
-    const { selection, setSelection, selectedApplicationId, setSelectedApplicationId } =
-      useSelection();
+    const { selection, setSelection } = useSelection();
 
-    const selectedDraftId =
-      selection?.kind === "draft" ? selection.draftId : null;
+    // Selection identity is derived from the URL route params, not from a second
+    // independent selection store. SelectionContext is kept in sync by AppShell.
+    const selectedApplicationId = routeApplicationId;
+    const selectedDraftId = routeDraftId;
 
     const selectedChangeDraftId =
       selection?.kind === "pending_changes" ? selection.changeDraftId : null;
@@ -96,28 +116,26 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
 
     const handleDetailMutation = useCallback(async () => {
       await refresh();
-      setSelectedApplicationId(null);
-    }, [refresh, setSelectedApplicationId]);
+    }, [refresh]);
 
     const handleDraftSaved = useCallback(
       (savedApp: Application) => {
         onActiveDraftChange(null);
-        onDraftIdChange(null);
-        setSelection(null);
+        // Saved draft must leave the Drafts tab and appear under Active. Navigate
+        // to the new saved-application detail route; AppShell re-syncs selection.
         setApplications((prev) => [savedApp, ...prev]);
-        // Saved draft must leave the Drafts tab and appear under Active.
+        onNavigateApplication(savedApp.id);
         void refresh();
       },
-      [onActiveDraftChange, onDraftIdChange, setSelection, refresh]
+      [onActiveDraftChange, onNavigateApplication, refresh]
     );
 
     const handleDraftDiscarded = useCallback(() => {
       onActiveDraftChange(null);
-      onDraftIdChange(null);
-      setSelection(null);
-      // Discarded draft must leave the Drafts tab.
+      // Discarded draft must leave the Drafts tab and the route must go to overview.
+      onNavigateOverview(true);
       void refresh();
-    }, [onActiveDraftChange, onDraftIdChange, setSelection, refresh]);
+    }, [onActiveDraftChange, onNavigateOverview, refresh]);
 
     const handleDraftPatched = useCallback(
       (updatedDraft: Application) => {
@@ -140,20 +158,6 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
       [refresh, setSelection]
     );
 
-    const handleSelectDraft = useCallback(
-      (id: string) => {
-        setSelection({ kind: "draft", draftId: id });
-        // Selecting a persisted draft must populate draft_id + activeDraft for
-        // DetailPanel's draft-edit mode — and must NOT set active_application_id.
-        const persisted = drafts.find((d) => String(d.id) === id);
-        if (persisted) {
-          onActiveDraftChange(persisted);
-          onDraftIdChange(id);
-        }
-      },
-      [setSelection, drafts, onActiveDraftChange, onDraftIdChange]
-    );
-
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-hidden">
@@ -162,7 +166,7 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
             drafts={drafts}
             archived={archived}
             activeDraft={activeDraft}
-            draftId={draftId}
+            draftId={selectedDraftId}
             activeTab={activeTab}
             loading={loading}
             error={error}
@@ -170,8 +174,8 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
             selectedDraftId={selectedDraftId}
             pendingChangesApplicationIds={pendingChangesApplicationIds}
             onActiveTabChange={setActiveTab}
-            onSelectApplication={setSelectedApplicationId}
-            onSelectDraft={handleSelectDraft}
+            onSelectApplication={onNavigateApplication}
+            onSelectDraft={onNavigateDraft}
             onRetry={() => void refresh()}
           />
         </div>
@@ -180,8 +184,10 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
           application={selectedApplication}
           isArchived={selectedApplicationIsArchived}
           activeDraft={activeDraft}
-          draftId={draftId}
+          draftId={selectedDraftId}
           selectedDraftId={selectedDraftId}
+          routeNotFound={routeNotFound}
+          routeLoading={routeLoading}
           selectedChangeDraft={selectedChangeDraft}
           onApplicationMutated={handleDetailMutation}
           onDraftSaved={handleDraftSaved}
