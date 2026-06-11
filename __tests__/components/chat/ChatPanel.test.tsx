@@ -7,6 +7,8 @@ import type { Application, TranscriptResponse } from "@/lib/types";
 vi.mock("@/lib/api", () => ({
   submitTranscript: vi.fn(),
   fetchLiveKitToken: vi.fn(),
+  discardDraft: vi.fn(),
+  restoreApplication: vi.fn(),
 }));
 
 // VoiceButton uses livekit-client; mock it so ChatPanel tests don't need LiveKit
@@ -403,6 +405,94 @@ describe("pending_changes status handling", () => {
     await act(async () => { await submitText("Discard my pending changes"); });
     await waitFor(() => {
       expect(onApplicationMutated).toHaveBeenCalled();
+    });
+  });
+
+  // ── Collision recovery ──────────────────────────────────────────────────────
+
+  const draftRow: Application = {
+    id: 33, company: "Aiden AI", role: "AI Engineer", status: "", priority: "",
+    location: "", job_link: "", employment_types: [], current_stages: [],
+    engaged_days: 0, next_action: "", comments: "", is_draft: true,
+    draft_created_at: null, archived_at: null,
+    created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z",
+  };
+
+  it("draft collision renders Open existing draft and Discard draft", async () => {
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_updated",
+      message: "A draft already exists for Aiden AI · AI Engineer.",
+      draft: draftRow,
+      collision: { kind: "draft", draft_id: 33, application_id: null, company: "Aiden AI", role: "AI Engineer", archived: false },
+    }));
+    renderPanel();
+    await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open existing draft" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Discard draft" })).toBeTruthy();
+    });
+  });
+
+  it("clicking Open existing draft populates draft state", async () => {
+    const onActiveDraftChange = vi.fn();
+    const onDraftIdChange = vi.fn();
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_updated",
+      message: "A draft already exists.",
+      draft: draftRow,
+      collision: { kind: "draft", draft_id: 33, application_id: null, company: "Aiden AI", role: "AI Engineer", archived: false },
+    }));
+    renderPanel({ onActiveDraftChange, onDraftIdChange });
+    await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
+    const btn = await screen.findByRole("button", { name: "Open existing draft" });
+    await act(async () => { fireEvent.click(btn); });
+    expect(onDraftIdChange).toHaveBeenCalledWith("33");
+    expect(onActiveDraftChange).toHaveBeenCalledWith(draftRow);
+  });
+
+  it("clicking Discard draft calls discardDraft and mutates", async () => {
+    const onApplicationMutated = vi.fn();
+    vi.mocked(api.discardDraft).mockResolvedValue(undefined);
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "draft_updated",
+      message: "A draft already exists.",
+      draft: draftRow,
+      collision: { kind: "draft", draft_id: 33, application_id: null, company: "Aiden AI", role: "AI Engineer", archived: false },
+    }));
+    renderPanel({ onApplicationMutated });
+    await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
+    const btn = await screen.findByRole("button", { name: "Discard draft" });
+    await act(async () => { fireEvent.click(btn); });
+    await waitFor(() => {
+      expect(api.discardDraft).toHaveBeenCalledWith("33");
+      expect(onApplicationMutated).toHaveBeenCalled();
+    });
+  });
+
+  it("active collision renders Open application", async () => {
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "no_change",
+      message: "An application already exists for Aiden AI · AI Engineer.",
+      collision: { kind: "active_application", draft_id: null, application_id: 42, company: "Aiden AI", role: "AI Engineer", archived: false },
+    }));
+    renderPanel();
+    await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open application" })).toBeTruthy();
+    });
+  });
+
+  it("archived collision renders Restore application", async () => {
+    mockSubmit.mockResolvedValue(makeResponse({
+      status: "updated",
+      message: "Existing archived application restored.",
+      collision: { kind: "archived_application", draft_id: null, application_id: 42, company: "Aiden AI", role: "AI Engineer", archived: true },
+    }));
+    renderPanel();
+    await act(async () => { await submitText("add application for AI Engineer at Aiden AI"); });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Restore application" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Open archived application" })).toBeTruthy();
     });
   });
 });

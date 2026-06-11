@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { ChatMessage as ChatMessageType } from "@/lib/types";
+import type { ChatMessage as ChatMessageType, ChatMessageAction } from "@/lib/types";
 import ChatMessage from "./ChatMessage";
 
 type ChatFeedProps = {
   messages: ChatMessageType[];
   onSuggestionClick?: (phrase: string) => void;
+  onActionClick?: (action: ChatMessageAction) => void;
 };
 
 function IntroCard() {
@@ -29,7 +30,7 @@ function IntroCard() {
   );
 }
 
-export default function ChatFeed({ messages, onSuggestionClick }: ChatFeedProps) {
+export default function ChatFeed({ messages, onSuggestionClick, onActionClick }: ChatFeedProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,7 +44,12 @@ export default function ChatFeed({ messages, onSuggestionClick }: ChatFeedProps)
       ) : (
         <div className="flex flex-col gap-3">
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} onSuggestionClick={onSuggestionClick} />
+            <ChatMessage
+              key={msg.id}
+              message={msg}
+              onSuggestionClick={onSuggestionClick}
+              onActionClick={onActionClick}
+            />
           ))}
         </div>
       )}

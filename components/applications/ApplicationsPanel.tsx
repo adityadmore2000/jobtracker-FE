@@ -2,9 +2,9 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import type { Application, ApplicationChangeDraft } from "@/lib/types";
-import { fetchApplications, fetchArchivedApplications, getApplicationChangeDraft } from "@/lib/api";
+import { fetchApplications, fetchArchivedApplications, fetchDrafts, getApplicationChangeDraft } from "@/lib/api";
 import { useSelection } from "@/lib/SelectionContext";
-import ApplicationsTable from "./ApplicationsTable";
+import ApplicationsTable, { type ApplicationsTab } from "./ApplicationsTable";
 import DetailPanel from "@/components/detail/DetailPanel";
 
 export type ApplicationsPanelHandle = {
@@ -21,8 +21,9 @@ type ApplicationsPanelProps = {
 const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelProps>(
   function ApplicationsPanel({ activeDraft, draftId, onActiveDraftChange, onDraftIdChange }, ref) {
     const [applications, setApplications] = useState<Application[]>([]);
+    const [drafts, setDrafts] = useState<Application[]>([]);
     const [archived, setArchived] = useState<Application[]>([]);
-    const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
+    const [activeTab, setActiveTab] = useState<ApplicationsTab>("active");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [pendingChangeDrafts, setPendingChangeDrafts] = useState<Map<number, ApplicationChangeDraft>>(new Map());
@@ -40,11 +41,13 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
       setLoading(true);
       setError(null);
       try {
-        const [active, arch] = await Promise.all([
+        const [active, draftRows, arch] = await Promise.all([
           fetchApplications(),
+          fetchDrafts(),
           fetchArchivedApplications(),
         ]);
         setApplications(active);
+        setDrafts(draftRows);
         setArchived(arch);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
@@ -102,19 +105,24 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
         onDraftIdChange(null);
         setSelection(null);
         setApplications((prev) => [savedApp, ...prev]);
+        // Saved draft must leave the Drafts tab and appear under Active.
+        void refresh();
       },
-      [onActiveDraftChange, onDraftIdChange, setSelection]
+      [onActiveDraftChange, onDraftIdChange, setSelection, refresh]
     );
 
     const handleDraftDiscarded = useCallback(() => {
       onActiveDraftChange(null);
       onDraftIdChange(null);
       setSelection(null);
-    }, [onActiveDraftChange, onDraftIdChange, setSelection]);
+      // Discarded draft must leave the Drafts tab.
+      void refresh();
+    }, [onActiveDraftChange, onDraftIdChange, setSelection, refresh]);
 
     const handleDraftPatched = useCallback(
       (updatedDraft: Application) => {
         onActiveDraftChange(updatedDraft);
+        setDrafts((prev) => prev.map((d) => (d.id === updatedDraft.id ? updatedDraft : d)));
       },
       [onActiveDraftChange]
     );
@@ -135,8 +143,15 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
     const handleSelectDraft = useCallback(
       (id: string) => {
         setSelection({ kind: "draft", draftId: id });
+        // Selecting a persisted draft must populate draft_id + activeDraft for
+        // DetailPanel's draft-edit mode — and must NOT set active_application_id.
+        const persisted = drafts.find((d) => String(d.id) === id);
+        if (persisted) {
+          onActiveDraftChange(persisted);
+          onDraftIdChange(id);
+        }
       },
-      [setSelection]
+      [setSelection, drafts, onActiveDraftChange, onDraftIdChange]
     );
 
     return (
@@ -144,6 +159,7 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
         <div className="min-h-0 flex-1 overflow-hidden">
           <ApplicationsTable
             applications={applications}
+            drafts={drafts}
             archived={archived}
             activeDraft={activeDraft}
             draftId={draftId}

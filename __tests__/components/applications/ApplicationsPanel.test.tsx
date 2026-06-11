@@ -8,6 +8,7 @@ import type { Application } from "@/lib/types";
 vi.mock("@/lib/api", () => ({
   fetchApplications: vi.fn(),
   fetchArchivedApplications: vi.fn(),
+  fetchDrafts: vi.fn(),
   fetchNotes: vi.fn().mockResolvedValue([]),
   fetchTimeline: vi.fn().mockResolvedValue([]),
   patchDraft: vi.fn(),
@@ -71,6 +72,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockFetchApplications.mockResolvedValue([makeApp(1), makeApp(2)]);
   mockFetchArchivedApplications.mockResolvedValue([archivedApp]);
+  vi.mocked(api.fetchDrafts).mockResolvedValue([]);
   vi.mocked(api.fetchNotes).mockResolvedValue([]);
   vi.mocked(api.fetchTimeline).mockResolvedValue([]);
 });

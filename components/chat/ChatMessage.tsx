@@ -1,11 +1,12 @@
 "use client";
 
 import { Pencil } from "lucide-react";
-import type { ChatMessage as ChatMessageType } from "@/lib/types";
+import type { ChatMessage as ChatMessageType, ChatMessageAction } from "@/lib/types";
 
 type ChatMessageProps = {
   message: ChatMessageType;
   onSuggestionClick?: (phrase: string) => void;
+  onActionClick?: (action: ChatMessageAction) => void;
 };
 
 function formatTimestamp(iso: string): string {
@@ -14,8 +15,8 @@ function formatTimestamp(iso: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export default function ChatMessage({ message, onSuggestionClick }: ChatMessageProps) {
-  const { role, text, timestamp, suggestions } = message;
+export default function ChatMessage({ message, onSuggestionClick, onActionClick }: ChatMessageProps) {
+  const { role, text, timestamp, suggestions, actions } = message;
 
   if (role === "user") {
     return (
@@ -57,6 +58,20 @@ export default function ChatMessage({ message, onSuggestionClick }: ChatMessageP
                 className="rounded-full border border-blue-300 bg-blue-50 px-2.5 py-1 font-mono text-xs text-blue-800 transition hover:bg-blue-100"
               >
                 {phrase}
+              </button>
+            ))}
+          </div>
+        )}
+        {actions && actions.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {actions.map((action) => (
+              <button
+                key={action.kind}
+                type="button"
+                onClick={() => onActionClick?.(action)}
+                className="rounded border border-foreground/30 bg-background px-2.5 py-1 text-xs font-medium transition hover:bg-muted"
+              >
+                {action.label}
               </button>
             ))}
           </div>

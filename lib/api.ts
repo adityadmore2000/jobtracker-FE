@@ -74,6 +74,11 @@ export async function fetchArchivedApplications(): Promise<Application[]> {
   return handleResponse(res);
 }
 
+export async function fetchDrafts(): Promise<Application[]> {
+  const res = await fetch(`${BASE_URL}/drafts`);
+  return handleResponse(res);
+}
+
 export async function fetchNotes(applicationId: number): Promise<ApplicationNote[]> {
   const res = await fetch(`${BASE_URL}/applications/${applicationId}/notes`);
   const data = await handleResponse<{ notes: ApplicationNote[] }>(res);
