@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { SelectionProvider } from "@/lib/SelectionContext";
 import "./styles.css";
 
 export const metadata: Metadata = {
@@ -14,7 +15,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <SelectionProvider>{children}</SelectionProvider>
+      </body>
     </html>
   );
 }
