@@ -26,6 +26,7 @@ const makeApp = (id: number, overrides?: Partial<Application>): Application => (
 
 const defaultProps = {
   applications: [makeApp(1), makeApp(2)],
+  drafts: [] as Application[],
   archived: [makeApp(3, { company: "Archived Co" })],
   activeDraft: null,
   draftId: null,
@@ -96,21 +97,63 @@ describe("ApplicationsTable", () => {
     expect(screen.getByText("Archived Co")).toBeInTheDocument();
   });
 
-  it("active button shows count including draft", () => {
-    const draft = { company: "Draft Co" };
-    render(
-      <ApplicationsTable
-        {...defaultProps}
-        activeDraft={draft}
-      />
-    );
-    // 2 saved + 1 draft = 3
-    expect(screen.getByText(/Active 3/)).toBeInTheDocument();
+  it("active button shows saved-row count", () => {
+    render(<ApplicationsTable {...defaultProps} />);
+    // 2 saved rows (persisted drafts live in their own tab)
+    expect(screen.getByText(/Active 2/)).toBeInTheDocument();
   });
 
   it("archived button shows archived count", () => {
     render(<ApplicationsTable {...defaultProps} />);
     expect(screen.getByText(/Archived 1/)).toBeInTheDocument();
+  });
+
+  it("drafts button shows draft count", () => {
+    render(
+      <ApplicationsTable
+        {...defaultProps}
+        drafts={[makeApp(7, { company: "Draft Co", is_draft: true })]}
+      />
+    );
+    expect(screen.getByText(/Drafts 1/)).toBeInTheDocument();
+  });
+
+  it("Drafts tab renders persisted drafts", () => {
+    render(
+      <ApplicationsTable
+        {...defaultProps}
+        drafts={[makeApp(7, { company: "Draft Co", role: "AI Engineer", is_draft: true })]}
+        activeTab="drafts"
+      />
+    );
+    expect(screen.getByText("Draft Co")).toBeInTheDocument();
+    expect(screen.getByText("AI Engineer")).toBeInTheDocument();
+  });
+
+  it("empty Drafts tab renders message", () => {
+    render(<ApplicationsTable {...defaultProps} drafts={[]} activeTab="drafts" />);
+    expect(screen.getByText("No drafts.")).toBeInTheDocument();
+  });
+
+  it("selecting a persisted draft invokes onSelectDraft with its id", () => {
+    const onSelectDraft = vi.fn();
+    render(
+      <ApplicationsTable
+        {...defaultProps}
+        drafts={[makeApp(7, { company: "Draft Co", is_draft: true })]}
+        activeTab="drafts"
+        onSelectDraft={onSelectDraft}
+      />
+    );
+    fireEvent.click(screen.getByText("Draft Co").closest("tr")!);
+    expect(onSelectDraft).toHaveBeenCalledWith("7");
+  });
+
+  it("clicking the Drafts tab invokes onActiveTabChange('drafts')", () => {
+    const onActiveTabChange = vi.fn();
+    render(<ApplicationsTable {...defaultProps} onActiveTabChange={onActiveTabChange} />);
+    fireEvent.click(screen.getByText(/Drafts/));
+    expect(onActiveTabChange).toHaveBeenCalledWith("drafts");
   });
 
   it("empty active state renders correct message", () => {

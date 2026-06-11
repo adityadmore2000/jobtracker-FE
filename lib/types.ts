@@ -37,11 +37,28 @@ export type TimelineEvent = {
   created_at: string;
 };
 
+export type ChatMessageAction = {
+  label: string;
+  // Recovery actions for collisions. Payload carried on the message.
+  kind:
+    | "open_draft"
+    | "discard_draft"
+    | "open_application"
+    | "open_archived_application"
+    | "restore_application";
+  draftId?: number | null;
+  applicationId?: number | null;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "system" | "draft";
   text: string;
   timestamp: string;
+  // Clickable rephrasing chips offered by the semantic extractor.
+  suggestions?: string[];
+  // Collision-recovery buttons (open / discard / restore).
+  actions?: ChatMessageAction[];
 };
 
 export type TranscriptContext = {
@@ -106,6 +123,19 @@ export type TranscriptResponse = {
   clarification_question: string | null;
   note?: TranscriptNote | null;
   pending_command?: PendingCommand | null;
+  // Single-call semantic extractor: safe rephrasings rendered as clickable chips.
+  suggested_phrasings?: string[];
+  // Structured collision metadata when a create command hit an existing row.
+  collision?: TranscriptCollision | null;
+};
+
+export type TranscriptCollision = {
+  kind: "draft" | "active_application" | "archived_application";
+  draft_id: number | null;
+  application_id: number | null;
+  company: string | null;
+  role: string | null;
+  archived: boolean;
 };
 
 export type LiveKitTokenResponse = {

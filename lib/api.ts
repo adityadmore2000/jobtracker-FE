@@ -74,6 +74,47 @@ export async function fetchArchivedApplications(): Promise<Application[]> {
   return handleResponse(res);
 }
 
+export async function fetchApplication(applicationId: number): Promise<Application> {
+  const res = await fetch(`${BASE_URL}/applications/${applicationId}`);
+  if (res.status === 404) throw new Error("Application not found");
+  return handleResponse<Application>(res);
+}
+
+export async function fetchDrafts(): Promise<Application[]> {
+  const res = await fetch(`${BASE_URL}/drafts`);
+  return handleResponse(res);
+}
+
+export async function fetchDraft(draftId: string): Promise<Application> {
+  const res = await fetch(`${BASE_URL}/drafts/${draftId}`);
+  if (!res.ok) {
+    const body = await res.text();
+    let detail = body;
+    try {
+      detail = JSON.parse(body)?.detail ?? body;
+    } catch {
+      // leave as raw text
+    }
+    // Preserve the "not a draft" signal so the UI can distinguish wrong-type
+    // from missing.
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteDraft(draftId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/drafts/${draftId}`, { method: "DELETE" });
+  if (res.status === 204) return;
+  const body = await res.text();
+  let detail = body;
+  try {
+    detail = JSON.parse(body)?.detail ?? body;
+  } catch {
+    // leave as raw text
+  }
+  throw new Error(detail || `HTTP ${res.status}`);
+}
+
 export async function fetchNotes(applicationId: number): Promise<ApplicationNote[]> {
   const res = await fetch(`${BASE_URL}/applications/${applicationId}/notes`);
   const data = await handleResponse<{ notes: ApplicationNote[] }>(res);
@@ -136,14 +177,6 @@ export async function patchDraft(draftId: string, payload: DraftPatchPayload): P
 export async function saveDraft(draftId: string): Promise<Application> {
   const res = await fetch(`${BASE_URL}/drafts/${draftId}/save`, { method: "POST" });
   return handleResponse<Application>(res);
-}
-
-export async function discardDraft(draftId: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/drafts/${draftId}/discard`, { method: "POST" });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(body || `HTTP ${res.status}`);
-  }
 }
 
 export async function deleteApplicationPermanently(applicationId: number): Promise<void> {
