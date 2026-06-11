@@ -1,8 +1,16 @@
 "use client";
 
 import { useState, useRef } from "react";
-import type { Application, ChatMessage, PendingCommand, TranscriptContext, TranscriptResponse } from "@/lib/types";
-import { submitTranscript } from "@/lib/api";
+import type {
+  Application,
+  ChatMessage,
+  ChatMessageAction,
+  PendingCommand,
+  TranscriptCollision,
+  TranscriptContext,
+  TranscriptResponse,
+} from "@/lib/types";
+import { deleteDraft, restoreApplication, submitTranscript } from "@/lib/api";
 import { useSelection } from "@/lib/SelectionContext";
 import type { SelectedTrackerItem } from "@/lib/SelectionContext";
 import ChatFeed from "./ChatFeed";
@@ -12,7 +20,10 @@ type ChatPanelProps = {
   activeDraft: Partial<Application> | null;
   draftId: string | null;
   onActiveDraftChange: (draft: Partial<Application> | null) => void;
-  onDraftIdChange: (draftId: string | null) => void;
+  // URL is canonical: navigation replaces direct draftId/selection mutation.
+  onNavigateDraft: (id: string) => void;
+  onNavigateApplication: (id: number) => void;
+  onNavigateOverview: (replace?: boolean) => void;
   onApplicationMutated: () => void;
 };
 
@@ -23,8 +34,35 @@ function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function makeMessage(role: ChatMessage["role"], text: string): ChatMessage {
-  return { id: makeId(), role, text, timestamp: new Date().toISOString() };
+function makeMessage(
+  role: ChatMessage["role"],
+  text: string,
+  extra?: { suggestions?: string[]; actions?: ChatMessageAction[] },
+): ChatMessage {
+  return {
+    id: makeId(),
+    role,
+    text,
+    timestamp: new Date().toISOString(),
+    suggestions: extra?.suggestions,
+    actions: extra?.actions,
+  };
+}
+
+function collisionActions(collision: TranscriptCollision): ChatMessageAction[] {
+  if (collision.kind === "draft") {
+    return [
+      { label: "Open existing draft", kind: "open_draft", draftId: collision.draft_id },
+      { label: "Discard draft", kind: "discard_draft", draftId: collision.draft_id },
+    ];
+  }
+  if (collision.kind === "archived_application") {
+    return [
+      { label: "Restore application", kind: "restore_application", applicationId: collision.application_id },
+      { label: "Open archived application", kind: "open_archived_application", applicationId: collision.application_id },
+    ];
+  }
+  return [{ label: "Open application", kind: "open_application", applicationId: collision.application_id }];
 }
 
 function buildDraftSummary(draft?: Partial<Application>): string {
@@ -43,7 +81,9 @@ export default function ChatPanel({
   activeDraft,
   draftId,
   onActiveDraftChange,
-  onDraftIdChange,
+  onNavigateDraft,
+  onNavigateApplication,
+  onNavigateOverview,
   onApplicationMutated,
 }: ChatPanelProps) {
   const { selectedApplicationId, setSelection } = useSelection();
@@ -55,13 +95,72 @@ export default function ChatPanel({
   const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // pending_command: echoed back to next request for clarification continuation
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
+  // Holds the existing draft row returned with a draft collision so "Open
+  // existing draft" can populate editor state without re-fetching.
+  const lastCollisionDraftRef = useRef<Application | null>(null);
 
   function append(...msgs: ChatMessage[]) {
     setMessages((prev) => [...prev, ...msgs]);
   }
 
+  async function handleAction(action: ChatMessageAction): Promise<void> {
+    if (action.kind === "open_draft" && action.draftId != null) {
+      const id = String(action.draftId);
+      // Seed activeDraft so the editor shows immediately; AppShell re-fetches the
+      // authoritative draft on the route change.
+      const draftRow = lastCollisionDraftRef.current;
+      if (draftRow) onActiveDraftChange(draftRow);
+      onNavigateDraft(id);
+      append(makeMessage("system", "Opened the existing draft."));
+      return;
+    }
+    if (action.kind === "discard_draft" && action.draftId != null) {
+      try {
+        await deleteDraft(String(action.draftId));
+        onActiveDraftChange(null);
+        onNavigateOverview();
+        append(makeMessage("system", "Draft discarded. You can create it again now."));
+        onApplicationMutated();
+      } catch {
+        append(makeMessage("system", "Could not discard the draft. Please try again."));
+      }
+      return;
+    }
+    if (
+      (action.kind === "open_application" || action.kind === "open_archived_application") &&
+      action.applicationId != null
+    ) {
+      onNavigateApplication(action.applicationId);
+      append(makeMessage("system", "Opened the existing application."));
+      return;
+    }
+    if (action.kind === "restore_application" && action.applicationId != null) {
+      try {
+        await restoreApplication(action.applicationId);
+        onNavigateApplication(action.applicationId);
+        append(makeMessage("system", "Application restored."));
+        onApplicationMutated();
+      } catch {
+        append(makeMessage("system", "Could not restore the application. Please try again."));
+      }
+      return;
+    }
+  }
+
   function handleResponse(response: TranscriptResponse, text: string) {
     const { status } = response;
+
+    // Collision: a create command hit an existing row. Surface recovery actions
+    // instead of silently opening/reapplying. Stash the existing row so the
+    // "open" actions can populate state without an extra fetch.
+    if (response.collision) {
+      setPendingCommand(null);
+      if (response.collision.kind === "draft" && response.draft) {
+        lastCollisionDraftRef.current = response.draft;
+      }
+      append(makeMessage("system", response.message, { actions: collisionActions(response.collision) }));
+      return;
+    }
 
     // Clear pending_command on success, error, or explicit cancel
     if (
@@ -74,26 +173,35 @@ export default function ChatPanel({
     }
 
     if (status === "draft_created" || status === "draft_updated") {
-      onDraftIdChange(response.draft_id ?? draftId);
       onActiveDraftChange(response.draft ?? activeDraft);
       append(makeMessage("draft", buildDraftSummary(response.draft ?? activeDraft ?? undefined)));
       append(makeMessage("system", response.message));
+      // Make the new/updated draft URL-addressable. Only navigate when the id
+      // actually changes route, so an in-place draft edit doesn't re-push.
+      const newDraftId = response.draft_id ?? draftId;
+      if (newDraftId != null && newDraftId !== draftId) {
+        onNavigateDraft(newDraftId);
+      }
       return;
     }
 
     if (status === "saved") {
-      onDraftIdChange(null);
       onActiveDraftChange(null);
       append(makeMessage("system", response.message));
       onApplicationMutated();
+      if (response.application_id != null) {
+        onNavigateApplication(response.application_id);
+      } else {
+        onNavigateOverview();
+      }
       return;
     }
 
     if (status === "discarded") {
-      onDraftIdChange(null);
       onActiveDraftChange(null);
       append(makeMessage("system", response.message));
       onApplicationMutated();
+      onNavigateOverview();
       return;
     }
 
@@ -129,7 +237,9 @@ export default function ChatPanel({
       // If note was attached to a draft, refresh draft view
       if (response.draft) {
         onActiveDraftChange(response.draft);
-        if (response.draft_id) onDraftIdChange(response.draft_id);
+        if (response.draft_id != null && response.draft_id !== draftId) {
+          onNavigateDraft(response.draft_id);
+        }
       }
       onApplicationMutated();
       return;
@@ -142,9 +252,10 @@ export default function ChatPanel({
     }
 
     if (status === "context_updated") {
-      // "update application for X" — set the active selected application context
+      // "update application for X" — make the targeted application the canonical
+      // selection by navigating to its detail route.
       if (response.application_id != null) {
-        setSelection({ kind: "application", applicationId: response.application_id });
+        onNavigateApplication(response.application_id);
       }
       append(makeMessage("system", response.message));
       return;
@@ -161,7 +272,10 @@ export default function ChatPanel({
 
     if (status === "unsupported") {
       setPendingCommand(null);
-      append(makeMessage("system", response.message));
+      const message = response.clarification_question
+        ? `${response.message}\nDid you mean: ${response.clarification_question}`
+        : response.message;
+      append(makeMessage("system", message, { suggestions: response.suggested_phrasings ?? undefined }));
       return;
     }
 
@@ -227,7 +341,16 @@ export default function ChatPanel({
         <p className="text-xs text-muted-foreground">Type naturally. Your changes stay local.</p>
       </div>
 
-      <ChatFeed messages={messages} />
+      <ChatFeed
+        messages={messages}
+        onSuggestionClick={(phrase) => {
+          // Clicking a chip is explicit user confirmation: resend as a new transcript.
+          if (!submitting) void handleSubmit(phrase);
+        }}
+        onActionClick={(action) => {
+          void handleAction(action);
+        }}
+      />
 
       <ChatInput
         value={inputText}

@@ -38,7 +38,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     ...actual,
     patchDraft: vi.fn(),
     saveDraft: vi.fn(),
-    discardDraft: vi.fn(),
+    deleteDraft: vi.fn(),
     updateApplication: vi.fn(),
     applyApplicationChangeDraft: vi.fn(),
     discardApplicationChangeDraft: vi.fn(),
@@ -346,8 +346,8 @@ describe("Mode D — draft edit", () => {
     expect(draftProps.onDraftSaved).toHaveBeenCalledWith(savedApp);
   });
 
-  it("Discard Draft calls discardDraft and triggers onDraftDiscarded", async () => {
-    vi.mocked(api.discardDraft).mockResolvedValue(undefined);
+  it("Discard Draft calls deleteDraft and triggers onDraftDiscarded", async () => {
+    vi.mocked(api.deleteDraft).mockResolvedValue(undefined);
 
     render(<DetailPanel {...draftProps} />);
 
@@ -356,9 +356,22 @@ describe("Mode D — draft edit", () => {
     });
 
     await waitFor(() => {
-      expect(vi.mocked(api.discardDraft)).toHaveBeenCalledWith("42");
+      expect(vi.mocked(api.deleteDraft)).toHaveBeenCalledWith("42");
     });
     expect(draftProps.onDraftDiscarded).toHaveBeenCalled();
+  });
+});
+
+// ── Route not-found / wrong-type states ──────────────────────────────────────
+describe("DetailPanel — route not-found", () => {
+  it("renders the not-found message when routeNotFound is set", () => {
+    render(<DetailPanel {...baseProps} routeNotFound="Draft not found" />);
+    expect(screen.getByText("Draft not found")).toBeInTheDocument();
+  });
+
+  it("renders the wrong-type message for a non-draft id", () => {
+    render(<DetailPanel {...baseProps} routeNotFound="Not a draft application" />);
+    expect(screen.getByText("Not a draft application")).toBeInTheDocument();
   });
 });
 

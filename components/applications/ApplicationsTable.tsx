@@ -1,18 +1,21 @@
 import type { Application } from "@/lib/types";
 import ApplicationRow from "./ApplicationRow";
 
+export type ApplicationsTab = "active" | "drafts" | "archived";
+
 type ApplicationsTableProps = {
   applications: Application[];
+  drafts: Application[];
   archived: Application[];
   activeDraft: Partial<Application> | null;
   draftId: string | null;
-  activeTab: "active" | "archived";
+  activeTab: ApplicationsTab;
   loading: boolean;
   error: string | null;
   selectedApplicationId: number | null;
   selectedDraftId: string | null;
   pendingChangesApplicationIds?: Set<number>;
-  onActiveTabChange: (tab: "active" | "archived") => void;
+  onActiveTabChange: (tab: ApplicationsTab) => void;
   onSelectApplication: (applicationId: number) => void;
   onSelectDraft: (draftId: string) => void;
   onRetry: () => void;
@@ -20,6 +23,7 @@ type ApplicationsTableProps = {
 
 export default function ApplicationsTable({
   applications,
+  drafts,
   archived,
   activeDraft,
   draftId,
@@ -34,10 +38,11 @@ export default function ApplicationsTable({
   onSelectDraft,
   onRetry,
 }: ApplicationsTableProps) {
-  const activeCount = applications.length + (activeDraft ? 1 : 0);
+  const activeCount = applications.length;
+  const draftsCount = drafts.length;
   const archivedCount = archived.length;
 
-  const activeTabClass = (tab: "active" | "archived") =>
+  const activeTabClass = (tab: ApplicationsTab) =>
     tab === activeTab
       ? "px-3 py-1 rounded text-sm font-medium bg-foreground text-background"
       : "px-3 py-1 rounded text-sm font-medium text-muted-foreground hover:text-foreground";
@@ -110,6 +115,32 @@ export default function ApplicationsTable({
       );
     }
 
+    if (activeTab === "drafts") {
+      if (drafts.length === 0) {
+        return (
+          <tr>
+            <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+              No drafts.
+            </td>
+          </tr>
+        );
+      }
+      return (
+        <>
+          {drafts.map((draft) => (
+            <ApplicationRow
+              key={draft.id}
+              application={draft}
+              isDraft
+              draftId={String(draft.id)}
+              isSelected={selectedDraftId === String(draft.id)}
+              onSelectDraft={onSelectDraft}
+            />
+          ))}
+        </>
+      );
+    }
+
     // archived tab
     if (archived.length === 0) {
       return (
@@ -147,6 +178,12 @@ export default function ApplicationsTable({
             onClick={() => onActiveTabChange("active")}
           >
             Active {activeCount}
+          </button>
+          <button
+            className={activeTabClass("drafts")}
+            onClick={() => onActiveTabChange("drafts")}
+          >
+            Drafts {draftsCount}
           </button>
           <button
             className={activeTabClass("archived")}

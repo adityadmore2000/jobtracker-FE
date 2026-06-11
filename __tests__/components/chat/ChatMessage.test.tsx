@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
 import ChatMessage from "@/components/chat/ChatMessage";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 
@@ -78,5 +78,28 @@ describe("ChatMessage", () => {
   it("renders message text for draft", () => {
     render(<ChatMessage message={makeMsg({ role: "draft", text: "Draft: Neilsoft · AI Engineer" })} />);
     expect(screen.getByText("Draft: Neilsoft · AI Engineer")).toBeTruthy();
+  });
+
+  it("renders suggested phrasings as clickable chips", () => {
+    const onSuggestionClick = vi.fn();
+    render(
+      <ChatMessage
+        message={makeMsg({
+          role: "system",
+          text: "I am not sure which field you want to change.",
+          suggestions: ["set priority of Neilsoft to medium"],
+        })}
+        onSuggestionClick={onSuggestionClick}
+      />,
+    );
+    const chip = screen.getByRole("button", { name: "set priority of Neilsoft to medium" });
+    expect(chip).toBeTruthy();
+    fireEvent.click(chip);
+    expect(onSuggestionClick).toHaveBeenCalledWith("set priority of Neilsoft to medium");
+  });
+
+  it("does not render a chip area when there are no suggestions", () => {
+    render(<ChatMessage message={makeMsg({ role: "system", text: "ok" })} />);
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

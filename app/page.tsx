@@ -1,10 +1,5 @@
-import AppShell from "@/components/layout/AppShell";
-import { SelectionProvider } from "@/lib/SelectionContext";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return (
-    <SelectionProvider>
-      <AppShell />
-    </SelectionProvider>
-  );
+  redirect("/applications");
 }
