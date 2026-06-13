@@ -198,6 +198,10 @@ describe("Mode C — saved application edit", () => {
       <DetailPanel {...baseProps} application={savedApp} onApplicationMutated={onApplicationMutated} />
     );
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    // Make a real change — redundant (no-op) submits are blocked by the form.
+    fireEvent.change(screen.getByPlaceholderText("e.g. Neilsoft"), {
+      target: { value: "Changed Corp" },
+    });
     await act(async () => {
       fireEvent.submit(screen.getByRole("button", { name: "Save Changes" }).closest("form")!);
     });
@@ -205,7 +209,7 @@ describe("Mode C — saved application edit", () => {
     await waitFor(() => {
       expect(vi.mocked(api.updateApplication)).toHaveBeenCalledWith(
         5,
-        expect.objectContaining({ company: "Test Corp" })
+        expect.objectContaining({ company: "Changed Corp" })
       );
     });
     await waitFor(() => {
@@ -441,6 +445,9 @@ describe("Conflict handling", () => {
 
     render(<DetailPanel {...baseProps} application={makeApp()} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByPlaceholderText("e.g. Neilsoft"), {
+      target: { value: "Rockwell" },
+    });
 
     await act(async () => {
       fireEvent.submit(
@@ -462,6 +469,9 @@ describe("Conflict handling", () => {
 
     render(<DetailPanel {...baseProps} application={makeApp()} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByPlaceholderText("e.g. Neilsoft"), {
+      target: { value: "Rockwell" },
+    });
 
     await act(async () => {
       fireEvent.submit(
@@ -487,6 +497,9 @@ describe("Conflict handling", () => {
       selectedDraftId: "42",
     };
     render(<DetailPanel {...draftProps} />);
+    fireEvent.change(screen.getByPlaceholderText("e.g. Neilsoft"), {
+      target: { value: "Changed Co" },
+    });
 
     await act(async () => {
       fireEvent.submit(
@@ -513,6 +526,9 @@ describe("Conflict handling", () => {
       selectedDraftId: "42",
     };
     render(<DetailPanel {...draftProps} />);
+    fireEvent.change(screen.getByPlaceholderText("e.g. Neilsoft"), {
+      target: { value: "Changed Co" },
+    });
 
     await act(async () => {
       fireEvent.submit(

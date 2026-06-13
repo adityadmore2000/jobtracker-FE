@@ -114,6 +114,42 @@ describe("ApplicationForm", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });
 
+  it("blocks a redundant categorical update and shows the message", () => {
+    const onSubmit = vi.fn();
+    render(
+      <ApplicationForm
+        initial={makeApp({ priority: "LOW" })}
+        submitting={false}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />
+    );
+    // Re-select the same priority value — a no-op categorical update.
+    const prioritySelect = screen.getByDisplayValue("LOW");
+    fireEvent.change(prioritySelect, { target: { value: "LOW" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!);
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    // The form reports the first unchanged categorical field (status here).
+    expect(screen.getByText(/value is already set to/)).toBeInTheDocument();
+  });
+
+  it("allows the update once a categorical field actually changes", () => {
+    const onSubmit = vi.fn();
+    render(
+      <ApplicationForm
+        initial={makeApp({ priority: "LOW" })}
+        submitting={false}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByDisplayValue("LOW"), { target: { value: "HIGH" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!);
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ priority: "HIGH" }));
+  });
+
   it("resets form values when initial prop changes", () => {
     const { rerender } = render(
       <ApplicationForm

@@ -1,7 +1,11 @@
+import { useEffect, useMemo, useState } from "react";
 import type { Application } from "@/lib/types";
 import ApplicationRow from "./ApplicationRow";
 
 export type ApplicationsTab = "active" | "drafts" | "archived";
+
+const PAGE_SIZE = 10;
+const COLUMN_COUNT = 8;
 
 type ApplicationsTableProps = {
   applications: Application[];
@@ -42,6 +46,34 @@ export default function ApplicationsTable({
   const draftsCount = drafts.length;
   const archivedCount = archived.length;
 
+  // Client-side pagination. The pinned active-tab draft row is not counted as a
+  // paginated row; only persisted rows (applications/drafts/archived) paginate.
+  const [page, setPage] = useState(1);
+
+  const rows = useMemo<Application[]>(() => {
+    if (activeTab === "active") return applications;
+    if (activeTab === "drafts") return drafts;
+    return archived;
+  }, [activeTab, applications, drafts, archived]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+
+  // Reset to page 1 whenever the tab changes or the row set shrinks below the
+  // current page (e.g. after archiving/deleting), so we never strand the user
+  // on an empty page.
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab]);
+
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages));
+  }, [totalPages]);
+
+  const pageRows = useMemo(
+    () => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [rows, page]
+  );
+
   const activeTabClass = (tab: ApplicationsTab) =>
     tab === activeTab
       ? "px-3 py-1 rounded text-sm font-medium bg-foreground text-background"
@@ -51,7 +83,7 @@ export default function ApplicationsTable({
     if (loading) {
       return (
         <tr>
-          <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+          <td colSpan={COLUMN_COUNT} className="px-3 py-8 text-center text-sm text-muted-foreground">
             Loading applications…
           </td>
         </tr>
@@ -61,7 +93,7 @@ export default function ApplicationsTable({
     if (error !== null) {
       return (
         <tr>
-          <td colSpan={7} className="px-3 py-8 text-center text-sm">
+          <td colSpan={COLUMN_COUNT} className="px-3 py-8 text-center text-sm">
             <span className="text-rose-600">Could not load applications.</span>
             <button
               className="ml-3 rounded border px-2 py-0.5 text-xs hover:bg-muted"
@@ -81,16 +113,19 @@ export default function ApplicationsTable({
       if (!hasDraft && !hasRows) {
         return (
           <tr>
-            <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+            <td colSpan={COLUMN_COUNT} className="px-3 py-8 text-center text-sm text-muted-foreground">
               No active applications yet.
             </td>
           </tr>
         );
       }
 
+      // The draft is pinned to the top of the first page only.
+      const showDraft = hasDraft && page === 1;
+
       return (
         <>
-          {hasDraft && draftId && (
+          {showDraft && draftId && (
             <ApplicationRow
               application={activeDraft}
               isDraft
@@ -99,10 +134,10 @@ export default function ApplicationsTable({
               onSelectDraft={onSelectDraft}
             />
           )}
-          {hasDraft && !draftId && (
+          {showDraft && !draftId && (
             <ApplicationRow application={activeDraft} isDraft />
           )}
-          {applications.map((app) => (
+          {pageRows.map((app) => (
             <ApplicationRow
               key={app.id}
               application={app}
@@ -119,7 +154,7 @@ export default function ApplicationsTable({
       if (drafts.length === 0) {
         return (
           <tr>
-            <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+            <td colSpan={COLUMN_COUNT} className="px-3 py-8 text-center text-sm text-muted-foreground">
               No drafts.
             </td>
           </tr>
@@ -127,7 +162,7 @@ export default function ApplicationsTable({
       }
       return (
         <>
-          {drafts.map((draft) => (
+          {pageRows.map((draft) => (
             <ApplicationRow
               key={draft.id}
               application={draft}
@@ -145,7 +180,7 @@ export default function ApplicationsTable({
     if (archived.length === 0) {
       return (
         <tr>
-          <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+          <td colSpan={COLUMN_COUNT} className="px-3 py-8 text-center text-sm text-muted-foreground">
             No archived applications.
           </td>
         </tr>
@@ -154,7 +189,7 @@ export default function ApplicationsTable({
 
     return (
       <>
-        {archived.map((app) => (
+        {pageRows.map((app) => (
           <ApplicationRow
             key={app.id}
             application={app}
@@ -206,11 +241,39 @@ export default function ApplicationsTable({
               <th className="px-3 py-2 font-medium">Priority</th>
               <th className="px-3 py-2 font-medium">Location</th>
               <th className="px-3 py-2 font-medium">Type</th>
+              <th className="px-3 py-2 font-medium">Link</th>
             </tr>
           </thead>
           <tbody>{renderBody()}</tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {!loading && error === null && rows.length > PAGE_SIZE && (
+        <div className="flex shrink-0 items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className="rounded border px-2 py-0.5 hover:bg-muted disabled:opacity-40"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              className="rounded border px-2 py-0.5 hover:bg-muted disabled:opacity-40"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

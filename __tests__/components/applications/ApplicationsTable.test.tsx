@@ -208,6 +208,40 @@ describe("ApplicationsTable", () => {
     expect(onRetry).toHaveBeenCalled();
   });
 
+  it("shows only the first 10 rows and a pager when there are more than 10", () => {
+    const many = Array.from({ length: 23 }, (_, i) => makeApp(i + 1));
+    render(<ApplicationsTable {...defaultProps} applications={many} />);
+    expect(screen.getByText("Company 1")).toBeInTheDocument();
+    expect(screen.getByText("Company 10")).toBeInTheDocument();
+    expect(screen.queryByText("Company 11")).not.toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+  });
+
+  it("does not render a pager when rows fit on one page", () => {
+    render(<ApplicationsTable {...defaultProps} />);
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+  });
+
+  it("Next advances to the following page of rows", () => {
+    const many = Array.from({ length: 23 }, (_, i) => makeApp(i + 1));
+    render(<ApplicationsTable {...defaultProps} applications={many} />);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Company 11")).toBeInTheDocument();
+    expect(screen.queryByText("Company 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+  });
+
+  it("Previous is disabled on the first page", () => {
+    const many = Array.from({ length: 23 }, (_, i) => makeApp(i + 1));
+    render(<ApplicationsTable {...defaultProps} applications={many} />);
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+  });
+
+  it("renders a Link column header", () => {
+    render(<ApplicationsTable {...defaultProps} />);
+    expect(screen.getByRole("columnheader", { name: "Link" })).toBeInTheDocument();
+  });
+
   it("selected row receives blue styling", () => {
     render(
       <ApplicationsTable

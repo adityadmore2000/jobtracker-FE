@@ -59,6 +59,36 @@ function toggleCheckbox(arr: string[], value: string): string[] {
   return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
 }
 
+// Categorical / enum-like fields guarded against redundant (no-op) updates.
+const CATEGORICAL_FIELDS = ["status", "priority", "location"] as const;
+type CategoricalField = (typeof CATEGORICAL_FIELDS)[number];
+
+const CATEGORICAL_LABELS: Record<CategoricalField, string> = {
+  status: "Status",
+  priority: "Priority",
+  location: "Location",
+};
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function hasAnyChange(initial: ApplicationFormValues, values: ApplicationFormValues): boolean {
+  return (
+    initial.company !== values.company ||
+    initial.role !== values.role ||
+    initial.job_link !== values.job_link ||
+    initial.status !== values.status ||
+    initial.priority !== values.priority ||
+    initial.location !== values.location ||
+    initial.engaged_days !== values.engaged_days ||
+    initial.next_action !== values.next_action ||
+    initial.comments !== values.comments ||
+    !arraysEqual(initial.employment_types, values.employment_types) ||
+    !arraysEqual(initial.current_stages, values.current_stages)
+  );
+}
+
 export default function ApplicationForm({
   initial,
   submitting,
@@ -67,17 +97,44 @@ export default function ApplicationForm({
   extraActions,
 }: ApplicationFormProps) {
   const [values, setValues] = useState<ApplicationFormValues>(() => toFormValues(initial));
+  // Baseline reflecting the persisted record, used to detect redundant updates.
+  const [baseline, setBaseline] = useState<ApplicationFormValues>(() => toFormValues(initial));
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Reset form when the initial application changes (e.g. switching selected rows)
   useEffect(() => {
-    setValues(toFormValues(initial));
+    const next = toFormValues(initial);
+    setValues(next);
+    setBaseline(next);
+    setNotice(null);
   }, [initial]);
 
-  const set = <K extends keyof ApplicationFormValues>(key: K, value: ApplicationFormValues[K]) =>
+  const set = <K extends keyof ApplicationFormValues>(key: K, value: ApplicationFormValues[K]) => {
+    if (notice) setNotice(null);
     setValues((prev) => ({ ...prev, [key]: value }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Block redundant updates: when no field actually changed, surface a
+    // field-level message for the categorical fields rather than calling the API.
+    if (!hasAnyChange(baseline, values)) {
+      const unchangedCategorical = CATEGORICAL_FIELDS.find(
+        (field) => baseline[field] === values[field]
+      );
+      if (unchangedCategorical) {
+        const currentValue = values[unchangedCategorical] || "—";
+        setNotice(
+          `${CATEGORICAL_LABELS[unchangedCategorical]} value is already set to ${currentValue}`
+        );
+      } else {
+        setNotice("No changes to save.");
+      }
+      return;
+    }
+
+    setNotice(null);
     onSubmit(values);
   };
 
@@ -235,6 +292,12 @@ export default function ApplicationForm({
           placeholder="Notes about this application…"
         />
       </div>
+
+      {notice && (
+        <p className="text-xs text-amber-700" role="status">
+          {notice}
+        </p>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">

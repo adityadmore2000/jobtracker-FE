@@ -118,6 +118,15 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
       await refresh();
     }, [refresh]);
 
+    // Optimistic, immutable patch of the updated row so the table reflects the
+    // change instantly, before the authoritative refetch resolves.
+    const handleApplicationUpdated = useCallback((updated: Application) => {
+      const replace = (rows: Application[]) =>
+        rows.map((row) => (row.id === updated.id ? updated : row));
+      setApplications(replace);
+      setArchived(replace);
+    }, []);
+
     const handleDraftSaved = useCallback(
       (savedApp: Application) => {
         onActiveDraftChange(null);
@@ -190,6 +199,7 @@ const ApplicationsPanel = forwardRef<ApplicationsPanelHandle, ApplicationsPanelP
           routeLoading={routeLoading}
           selectedChangeDraft={selectedChangeDraft}
           onApplicationMutated={handleDetailMutation}
+          onApplicationUpdated={handleApplicationUpdated}
           onDraftSaved={handleDraftSaved}
           onDraftDiscarded={handleDraftDiscarded}
           onDraftPatched={handleDraftPatched}
