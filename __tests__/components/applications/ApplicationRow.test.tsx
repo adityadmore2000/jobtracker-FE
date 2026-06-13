@@ -97,6 +97,32 @@ describe("ApplicationRow — saved application", () => {
     expect(screen.getByText("Full Time, Part Time")).toBeInTheDocument();
   });
 
+  it("renders a clickable link opening job_link in a new tab", () => {
+    render(
+      <table><tbody><ApplicationRow application={{ ...savedApp, job_link: "https://jobs.example.com/1" }} /></tbody></table>
+    );
+    const link = screen.getByRole("link", { name: "link" });
+    expect(link).toHaveAttribute("href", "https://jobs.example.com/1");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("renders a dash when job_link is missing", () => {
+    render(
+      <table><tbody><ApplicationRow application={{ ...savedApp, job_link: "" }} /></tbody></table>
+    );
+    expect(screen.queryByRole("link", { name: "link" })).not.toBeInTheDocument();
+  });
+
+  it("clicking the link does not trigger row selection", () => {
+    const onSelect = vi.fn();
+    render(
+      <table><tbody><ApplicationRow application={{ ...savedApp, job_link: "https://x.test" }} onSelect={onSelect} /></tbody></table>
+    );
+    fireEvent.click(screen.getByRole("link", { name: "link" }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("renders multiple current_stages as comma-separated text", () => {
     const multiStageApp: Application = {
       ...savedApp,

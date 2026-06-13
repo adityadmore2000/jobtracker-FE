@@ -22,6 +22,8 @@ type DetailPanelProps = {
   application: Application | null;
   isArchived: boolean;
   onApplicationMutated: () => void | Promise<void>;
+  // Optimistic, immediate local patch with the server's updated row.
+  onApplicationUpdated?: (updated: Application) => void;
   // draft selection
   activeDraft: Partial<Application> | null;
   draftId: string | null;
@@ -52,6 +54,7 @@ export default function DetailPanel({
   application,
   isArchived,
   onApplicationMutated,
+  onApplicationUpdated,
   activeDraft,
   draftId,
   selectedDraftId,
@@ -326,9 +329,12 @@ export default function DetailPanel({
             next_action: values.next_action,
             comments: values.comments,
           };
-          await updateApplication(application.id, payload);
-          await onApplicationMutated();
+          const updated = await updateApplication(application.id, payload);
+          // Reflect the change in the table immediately, then refetch for the
+          // authoritative state (e.g. server-derived fields).
+          onApplicationUpdated?.(updated);
           setEditMode("readonly");
+          await onApplicationMutated();
         } catch (err) {
           setError(err instanceof Error ? err.message : "Failed to save changes");
         } finally {
