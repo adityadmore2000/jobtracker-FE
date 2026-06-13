@@ -113,6 +113,21 @@ export default function ApplicationRow({
       </td>
       <td className="px-3 py-2 text-sm">{cell(application.location)}</td>
       <td className="px-3 py-2 text-sm">{renderArray(application.employment_types)}</td>
+      <td className="px-3 py-2 text-sm">
+        {application.job_link?.trim() ? (
+          <a
+            href={application.job_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline hover:text-blue-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            link
+          </a>
+        ) : (
+          "—"
+        )}
+      </td>
     </tr>
   );
 }
